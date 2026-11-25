@@ -1,4 +1,4 @@
 <resources>
-    <string name="house_name">BRAVIA</string>
-    <string name="house_dashboard">Домашний дашборд</string>
+    <string translatable="false" name="house_name">BRAVIA</string>
+    <string translatable="false" name="house_dashboard">Домашний дашборд</string>
 </resources>

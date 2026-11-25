@@ -17,6 +17,9 @@ elif cmd.startswith("install -r "):
         print("Failure [fixture]");sys.exit(1)
     state["files"][name]=Path(args[-1]).read_bytes().hex()
     print("Success")
+elif cmd.startswith("exec-out cat "):
+    name=args[-1].split("/")[-2].split(".")[-1]
+    sys.stdout.buffer.write(bytes.fromhex(state["files"][name]))
 elif cmd.startswith(("shell stat ","shell sha256sum ")):
     import hashlib
     data=bytes.fromhex(state["files"][args[-1].split("/")[-2].split(".")[-1]])

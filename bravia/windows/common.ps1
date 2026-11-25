@@ -68,6 +68,23 @@ function Show-Component([string]$component) {
     if ($result -notmatch '(?m)^Status:\s*ok') { throw "Launch failed: $component" }
 }
 
+# Windows PowerShell 5.1 decodes native pipelines as text. Hash the raw stdout stream.
+function Get-InstalledApkDigest([string]$Source) {
+    if ($Source -notmatch '^/data/app/[A-Za-z0-9_./=-]+/base\.apk$') { throw 'Unexpected APK hash path' }
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = $Adb
+    $info.Arguments = "-s $Tv exec-out cat $Source"
+    $info.UseShellExecute = $false
+    $info.RedirectStandardOutput = $true
+    $process = [Diagnostics.Process]::Start($info)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = $hash.ComputeHash($process.StandardOutput.BaseStream)
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) { throw 'Cannot stream installed APK for verification. Reconnect and retry.' }
+        return [BitConverter]::ToString($digest).Replace('-','')
+    } finally { $hash.Dispose(); $process.Dispose() }
+}
 function Copy-InstalledApk([string]$Source, [string]$Destination) {
     if ($Source -notmatch '^/data/app/[A-Za-z0-9_./=-]+/base\.apk$') { throw 'Unexpected installed APK path' }
     $temp = '/sdcard/Download/bravia-backup-' + [guid]::NewGuid().ToString('N') + '.apk'
@@ -82,7 +99,7 @@ function Copy-InstalledApk([string]$Source, [string]$Destination) {
             $null = Invoke-Tv pull $temp $Destination
         }
         $bytes = ((Invoke-Tv shell stat -c %s $Source) -join '').Trim()
-        $checksum = ((Invoke-Tv shell sha256sum $Source) -join ' ').Split(' ')[0]
+        $checksum = Get-InstalledApkDigest $Source
         if ($bytes -notmatch '^\d+$' -or [long]$bytes -le 0 -or [long]$bytes -ne (Get-Item $Destination).Length -or
             $checksum -ne (Get-FileHash $Destination -Algorithm SHA256).Hash) { throw "Backup integrity check failed for $Source" }
     } finally {
