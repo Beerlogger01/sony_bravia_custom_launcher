@@ -3,17 +3,22 @@ plugins { id 'com.android.application' }
 def legacy = file('../../../legacy/launcher/app')
 android {
     namespace 'com.gathin.tvhome'
+    useLibrary 'android.test.runner'
+    useLibrary 'android.test.base'
     compileSdk 34
     defaultConfig {
         applicationId 'house.bravia.home'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
         minSdk 24
         targetSdk 34
-        versionCode 13
-        versionName '1.0'
+        versionCode 14
+        versionName '1.1-rc1'
     }
     sourceSets {
         main.java.srcDir new File(legacy, 'src/main/java')
         main.res.srcDir new File(legacy, 'src/main/res')
+        debug.res.srcDir "src/bravia/res"
+        release.res.srcDir "src/bravia/res"
         test.java.srcDir new File(legacy, 'src/test/java')
     }
     compileOptions {

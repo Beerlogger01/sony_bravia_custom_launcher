@@ -7,7 +7,8 @@ import android.os.*;
 public final class Summary extends Service implements Feed.Listener {
     private Messenger client;
     private Feed feed;
-    private String[] last;
+    private String[] last, lastFeatured;
+    private int lastNew;
     private final Messenger endpoint=new Messenger(new Handler(Looper.getMainLooper(),msg -> {
         client=msg.replyTo; last=null;
         if(client!=null) feed.add(this);
@@ -18,9 +19,12 @@ public final class Summary extends Service implements Feed.Listener {
     public void changed(){
         if(client==null)return;
         String[] values=feed.summary();
-        if(java.util.Arrays.equals(values,last))return;
+        String[] featured=feed.featured();
+        int fresh=feed.prefs.getStringSet("new",java.util.Collections.emptySet()).size();
+        if(java.util.Arrays.equals(values,last) && java.util.Arrays.equals(featured,lastFeatured) && fresh==lastNew)return;
+        lastFeatured=featured;lastNew=fresh;
         last=values;
-        Message m=Message.obtain(); Bundle b=new Bundle(); b.putStringArray("summary",values); m.setData(b);
+        Message m=Message.obtain(); Bundle b=new Bundle(); b.putStringArray("summary",values); b.putStringArray("featured",featured); b.putInt("new",fresh); m.setData(b);
         try {client.send(m);} catch(RemoteException e){client=null;feed.remove(this);}
     }
 }

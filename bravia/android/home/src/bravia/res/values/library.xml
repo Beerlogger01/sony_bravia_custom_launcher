@@ -1,0 +1,5 @@
+<resources>
+    <bool name="app_library">true</bool>
+    <bool name="library_button">true</bool>
+    <bool name="reduced_motion">true</bool>
+</resources>

@@ -14,7 +14,12 @@ import java.util.*;
 public final class PanelActivity extends Activity implements Feed.Listener {
     private Feed feed;
     private TextView status;
-    private ListView list;
+    private ListView list, navigation;
+    private TextView heading, count;
+    private ArrayAdapter<String> navAdapter;
+    private static final int PAPER=0xfffaf7ee, MUTED=0xffb5bac3, GOLD=0xffffc080;
+    private float scale;
+    private boolean pendingDashboard;
     private ArrayAdapter<String> adapter;
     private final ArrayList<String> keys=new ArrayList<>();
     private final ArrayList<String> labels=new ArrayList<>();
@@ -25,25 +30,81 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     public void onCreate(Bundle state) {
         super.onCreate(state);
         feed=Feed.get(this);
-        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); int pad=dp(28);
-        box.setPadding(pad,pad,pad,pad); box.setBackgroundColor(0xff102126); setContentView(box);
-        status=new TextView(this); status.setTextSize(23); status.setTextColor(0xff8ce2bc); box.addView(status);
-        adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,new ArrayList<>()){
-            @Override public View getView(int position,View recycled,ViewGroup parent){
-                TextView view=(TextView)super.getView(position,recycled,parent);view.setTextSize(19);return view;
+        scale=Math.min(getResources().getDisplayMetrics().widthPixels/1200f,getResources().getDisplayMetrics().heightPixels/675f);
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.HORIZONTAL);box.setBackgroundColor(0xff12161d);setContentView(box);
+        LinearLayout side=column();side.setBackgroundColor(0xff1c212a);side.setPadding(px(28),px(29),px(22),px(20));box.addView(side,px(275),-1);
+        TextView brand=type("BRAVIA",21,GOLD,true);brand.setLetterSpacing(.12f);side.addView(brand);
+        TextView sub=type("Home Assistant",17,MUTED,false);side.addView(sub);
+        navigation=new ListView(this);configureList(navigation);LinearLayout.LayoutParams navSize=new LinearLayout.LayoutParams(-1,0,1);navSize.topMargin=px(20);side.addView(navigation,navSize);
+        navAdapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,MENU){
+            public View getView(int i,View old,ViewGroup parent){
+                TextView t=old instanceof TextView?(TextView)old:type("",18,PAPER,false);
+                String label=i==7?"Каталог сущностей":MENU[i];t.setText(label);t.setTextColor(MENU[i].equals(section)?GOLD:PAPER);
+                t.setPadding(px(12),0,0,0);t.setHeight(px(43));return t;
             }
         };
-        list=new ListView(this); list.setAdapter(adapter); box.addView(list);
-        list.setOnItemClickListener((p,v,i,id)-> select(i));
-        if(state!=null)section=state.getString("section","");
+        navigation.setAdapter(navAdapter);navigation.setOnItemClickListener((p0,v,i,id)->openSection(i));
+        LinearLayout main=column();main.setPadding(px(35),px(28),px(37),px(24));box.addView(main,new LinearLayout.LayoutParams(0,-1,1));
+        status=type("",16,GOLD,true);main.addView(status);
+        heading=type("",40,PAPER,true);main.addView(heading);
+        count=type("",17,MUTED,false);main.addView(count);
+        adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,new ArrayList<>()){
+            @Override public View getView(int i,View recycled,ViewGroup parent){
+                LinearLayout row=recycled instanceof LinearLayout?(LinearLayout)recycled:entityRow();
+                bindRow(row,i);return row;
+            }
+        };
+        list=new ListView(this);configureList(list);list.setDivider(new android.graphics.drawable.ColorDrawable(0xff12161d));list.setDividerHeight(px(7));
+        list.setAdapter(adapter);LinearLayout.LayoutParams dataSize=new LinearLayout.LayoutParams(-1,0,1);dataSize.topMargin=px(18);main.addView(list,dataSize);
+        list.setOnItemClickListener((p0,v,i,id)->select(i));
+        String requested=getIntent().getStringExtra("screen");
+        section=state!=null?state.getString("section",MENU[0]):requested;
+        if(!Arrays.asList(MENU).contains(section))section=MENU[0];
+        navigation.requestFocus();navigation.setSelection(Arrays.asList(MENU).indexOf(section));
+        pendingDashboard=state==null && "dashboard".equals(requested);
+    }
+    private int px(float n){return Math.round(n*scale);}
+    private LinearLayout column(){LinearLayout view=new LinearLayout(this);view.setOrientation(LinearLayout.VERTICAL);return view;}
+    private TextView type(String label,int size,int color,boolean medium){
+        TextView t=new TextView(this);t.setText(label);t.setTextColor(color);t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,px(size));
+        t.setTypeface(android.graphics.Typeface.create(medium?"sans-serif-medium":"sans-serif",android.graphics.Typeface.NORMAL));
+        t.setSingleLine();t.setEllipsize(android.text.TextUtils.TruncateAt.END);t.setGravity(Gravity.CENTER_VERTICAL);return t;
+    }
+    private android.graphics.drawable.GradientDrawable surface(int fill){
+        android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(fill);bg.setCornerRadius(px(11));return bg;
+    }
+    private void configureList(ListView v){
+        v.setDivider(null);v.setVerticalScrollBarEnabled(false);v.setDrawSelectorOnTop(true);
+        android.graphics.drawable.GradientDrawable focus=surface(0x16ffffff);focus.setStroke(px(2),GOLD);
+        android.graphics.drawable.StateListDrawable states=new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused},focus);states.addState(new int[]{},surface(0));v.setSelector(states);
+    }
+    private LinearLayout entityRow(){
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setMinimumHeight(px(75));row.setPadding(px(18),px(7),px(18),px(7));row.setBackground(surface(0xff242b35));
+        LinearLayout name=column();row.addView(name,new LinearLayout.LayoutParams(0,-2,1));name.addView(type("",21,PAPER,true));name.addView(type("",15,MUTED,false));
+        TextView val=type("",23,GOLD,true);val.setMaxWidth(px(200));row.addView(val);return row;
+    }
+    private void bindRow(LinearLayout row,int i){
+        String key=keys.get(i);JSONObject r=catalog.get(key);LinearLayout name=(LinearLayout)row.getChildAt(0);
+        TextView title=(TextView)name.getChildAt(0),detail=(TextView)name.getChildAt(1),value=(TextView)row.getChildAt(1);
+        title.setText(r==null?labels.get(i):r.optString("title"));
+        if(r==null){detail.setText(key.isEmpty()?"Выберите раздел или откройте каталог":"Проверьте запись в реестре");value.setText("");return;}
+        String area=r.optString("area"),device=r.optString("device");
+        String location=area.isEmpty()?device:area+(device.isEmpty()?"":"  ·  "+device);
+        detail.setText((feed.prefs.getStringSet("new",Collections.emptySet()).contains(key)?"Новое   ·   ":"")+(feed.pins().contains(key)?"★   ":"")+(location.isEmpty()?r.optString("eid"):location));
+        value.setText(Feed.reading(r).trim());
+    }
+    private void openSection(int i){
+        if(i==10){settings();return;}if(i==8||i==9){dashboard(i==9);return;}
+        section=MENU[i];changed();navAdapter.notifyDataSetChanged();list.requestFocus();list.setSelection(0);
     }
     public void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);b.putString("section",section);}
     private int dp(int v){return Math.round(getResources().getDisplayMetrics().density*v);}
-    public void onStart(){super.onStart();feed.add(this);}
+    public void onStart(){super.onStart();feed.add(this);if(pendingDashboard){pendingDashboard=false;list.post(()->dashboard(false));}}
     public void onStop(){feed.remove(this);super.onStop();}
     public void changed(){
-        String heading=(section.isEmpty()?"Домашний дашборд":section)+"     /     "+feed.ageLabel();
-        if(!heading.contentEquals(status.getText()))status.setText(heading);
+        status.setText("HOME ASSISTANT    /    "+feed.ageLabel());
+        heading.setText(section.equals(MENU[7])?"Каталог сущностей":section);
         int pos=list.getSelectedItemPosition();
         String selected=pos>=0 && pos<keys.size()?keys.get(pos):"";
         catalog.clear();
@@ -51,8 +112,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
             JSONObject row=feed.rows.optJSONObject(i); catalog.put(row.optString("key"),row);
         }
         ArrayList<String> next=new ArrayList<>(), ids=new ArrayList<>();
-        if(section.isEmpty()) {Collections.addAll(next,MENU);ids.addAll(next);int count=feed.prefs.getStringSet("new",Collections.emptySet()).size();if(count>0)next.set(7,MENU[7]+"   ·   Новые: "+count);}
-        else {
+        {
             List<String> pins=feed.pins();
             Iterable<String> source=section.equals(MENU[0])?pins:orderedKeys();
             for(String key:source){
@@ -66,6 +126,8 @@ public final class PanelActivity extends Activity implements Feed.Listener {
                     +"     "+r.optString("area")+(section.equals(MENU[7])?"   ·   "+r.optString("device"):""));
             }
         }
+        int fresh=feed.prefs.getStringSet("new",Collections.emptySet()).size();
+        count.setText("Карточек  ·  "+next.size()+(section.equals(MENU[7])?"     Новых  ·  "+fresh:""));
         if(next.isEmpty()){next.add("Пока нет данных");ids.add("");}
         if(keys.equals(ids) && !next.equals(labels)){
             // List identity and focus stay stable while individual readings change.
@@ -73,7 +135,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
             for(int i=0;i<next.size();i++){
                 if(next.get(i).equals(labels.get(i)))continue;
                 View child=list.getChildAt(i-first);
-                if(child instanceof TextView)((TextView)child).setText(next.get(i));
+                if(child instanceof LinearLayout)bindRow((LinearLayout)child,i);
             }
             labels.clear();labels.addAll(next);
             adapter.setNotifyOnChange(false);adapter.clear();adapter.addAll(next);
@@ -98,11 +160,6 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         return result;
     }
     private void select(int i){
-        if(section.isEmpty()){
-            if(i==10){settings();return;}
-            if(i==8||i==9){dashboard(i==9);return;}
-            section=MENU[i];changed();list.setSelection(0);return;
-        }
         String key=keys.get(i); if(key.isEmpty())return;
         feed.acknowledge(key);
         ArrayList<String> pins=feed.pins(); int index=pins.indexOf(key);
@@ -179,5 +236,5 @@ public final class PanelActivity extends Activity implements Feed.Listener {
                 catch(ActivityNotFoundException e){toast("Браузер не установлен");}})
             .setNegativeButton("Назад",null).show();
     }
-    public void onBackPressed(){if(!section.isEmpty()){int index=Arrays.asList(MENU).indexOf(section);section="";changed();list.setSelection(index);}else super.onBackPressed();}
+    public void onBackPressed(){if(list.hasFocus())navigation.requestFocus();else super.onBackPressed();}
 }

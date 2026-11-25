@@ -1,0 +1,1 @@
+The public source distribution includes an original static vector mountain landscape. No household photos are distributed. The line icons are Lucide Static 0.468.0. See LUCIDE-LICENSE.txt. The upstream Legacy assets and notices are preserved in the pinned submodule.

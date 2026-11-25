@@ -169,6 +169,18 @@ final class Feed {
         }
         return val+" "+r.optString("unit");
     }
+    String[] featured() {
+        ArrayList<String> result=new ArrayList<>();
+        Map<String,JSONObject> byKey=new HashMap<>();
+        for(int i=0;i<rows.length();i++){ JSONObject r=rows.optJSONObject(i); byKey.put(r.optString("key"),r); }
+        for(String key:pins()){
+            JSONObject r=byKey.get(key);
+            if(r==null || problem(r))continue;
+            result.add(r.optString("title")); result.add(reading(r).trim());
+            if(result.size()==6)break;
+        }
+        return result.toArray(new String[0]);
+    }
     String[] summary() {
         int lights=0,issues=0; String robot="—"; ArrayList<String> active=new ArrayList<>();
         Map<String,JSONObject> byKey=new HashMap<>();
