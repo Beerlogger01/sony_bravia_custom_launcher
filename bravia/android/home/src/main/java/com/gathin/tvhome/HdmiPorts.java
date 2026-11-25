@@ -13,16 +13,21 @@ final class HdmiPorts {
         if(label==null)return 0;
         Matcher m=NUMBER.matcher(label.toString().trim());return m.matches()?Integer.parseInt(m.group(1)):0;
     }
+    static int boot(Context c){
+        return android.provider.Settings.Global.getInt(c.getContentResolver(),android.provider.Settings.Global.BOOT_COUNT,-1);
+    }
     static String input(Context c,int port){
         TvInputManager tm=(TvInputManager)c.getSystemService(Context.TV_INPUT_SERVICE);
         if(tm==null)return null;
         SharedPreferences map=c.getSharedPreferences("hardware",0);
-        String saved=Build.FINGERPRINT.equals(map.getString("firmware",""))?map.getString("p"+port,""):"";
+        int boot=boot(c);
+        String saved=boot>=0 && boot==map.getInt("boot",-1) && Build.FINGERPRINT.equals(map.getString("firmware",""))?map.getString("p"+port,""):"";
         String match=null;int matches=0;
         for(TvInputInfo i:tm.getTvInputList()){
             if(i.getType()!=TvInputInfo.TYPE_HDMI||!i.isPassthroughInput()||i.getParentId()!=null||i.isHidden(c))continue;
-            if(i.getId().equals(saved))return saved;
-            if(number(i.loadLabel(c))==port){match=i.getId();matches++;}
+            int declared=number(i.loadLabel(c));
+            if(i.getId().equals(saved) && (declared==0 || declared==port))return saved;
+            if(declared==port){match=i.getId();matches++;}
         }
         return matches==1?match:null;
     }

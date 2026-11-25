@@ -10,7 +10,7 @@ import tempfile
 
 from aiohttp import ClientSession
 from homeassistant import bootstrap, loader
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar, entity_registry as er
 
 async def test(config):
@@ -76,6 +76,12 @@ async def test(config):
                 hass.states.async_set(eid,"22",{"device_class":"temperature","unit_of_measurement":"°C"})
                 assert (await message())["upsert"][0]["value"]=="22"
                 async with client.post(prefix+"/action",json={"key":reg.id,"action":"turn_on"},headers=hdr,ssl=ctx) as res:assert res.status==403
+                new_eid="sensor.fixture_renamed_room"
+                hass.states.async_remove(eid)
+                reg=registry.async_update_entity(eid,new_entity_id=new_eid)
+                eid=new_eid
+                hass.states.async_set(eid,"23")
+                assert (await message())["upsert"][0]["key"]==reg.id
                 registry.async_update_entity(eid, name="Renamed reading")
                 hass.states.async_set(eid,"unavailable",{"friendly_name":"Renamed reading"})
                 renamed=(await message())["upsert"][0]
@@ -86,12 +92,47 @@ async def test(config):
                 assert (await message())["upsert"][0]["area"]==room.name
                 hass.states.async_remove(eid)
                 assert (await message())["remove"]==[reg.id]
+                lamp=registry.async_get_or_create("light","fixture","lamp",suggested_object_id="test_lamp")
+                hass.states.async_set(lamp.entity_id,"off")
+                await option("cards",{"entities":[lamp.entity_id],"control":[lamp.entity_id]})
+                allowed=(await message())["upsert"][0]
+                assert allowed["key"]==lamp.id and allowed["controllable"]
+                calls=[]
+                @callback
+                def record(call):
+                    calls.append(call.data["entity_id"])
+                hass.services.async_register("light","turn_on",record)
+                async with client.post(prefix+"/action",json={"key":lamp.id,"action":"turn_on"},headers=hdr,ssl=ctx) as res:
+                    assert res.status==200 and calls==[lamp.entity_id]
                 await option("revoke",{})
                 assert await asyncio.wait_for(stream.content.read(),3) in (b"\n",b"")
             async with client.get(prefix+"/events",headers=hdr,ssl=ctx) as res:assert res.status==401
+            code=(await option("pair"))["description_placeholders"]["code"]
+            async with client.post(prefix+"/pair",json={"code":code},ssl=ctx) as res:
+                replacement=(await res.json())["token"]
         print("HA Core: config/options, pairing, replay and invalid token, TLS snapshot/delta/removal, scoped control denial, stream revocation. PASS")
     finally:
         await hass.async_stop()
+
+    # Recreate Core from the same storage, with a new runtime and empty state machine.
+    restarted=HomeAssistant(str(config))
+    loader.async_setup(restarted)
+    restarted.config.skip_pip=True
+    await bootstrap.async_from_config_dict(settings,restarted)
+    await restarted.async_start()
+    try:
+        assert len(restarted.config_entries.async_entries("bravia_launcher"))==2
+        async with ClientSession() as client:
+            async with client.get(prefix+"/events",headers=hdr,ssl=ctx) as res:assert res.status==401
+            async with client.get(prefix+"/events",headers={"Authorization":"Bearer "+replacement},ssl=ctx) as res:
+                assert res.status==200
+                assert "rows" in json.loads((await res.content.readline())[6:])
+                restored=restarted.config_entries.async_get_entry(entry.entry_id)
+                restarted.config_entries.async_update_entry(restored,data={})
+                await asyncio.wait_for(res.content.read(),5)
+        print("HA restart: configuration, rotated credential and new snapshot verified.")
+    finally:
+        await restarted.async_stop()
 
 if __name__=="__main__":
     with tempfile.TemporaryDirectory() as temp:asyncio.run(test(Path(temp)))

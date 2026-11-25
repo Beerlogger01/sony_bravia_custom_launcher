@@ -10,7 +10,7 @@ $cert = '8c564f58900eb43a9e9a15b456381916a0e164226821c499b7f4b8944f25c82c'
 $map = Read-PortMap (Get-Content (Join-Path $dir 'inputs.txt'))
 $rc1 = @{home='2f7bae5681d82d8430c2e6504ef48243383e6718a4384bdeff69977417030a0a';panel='dc6fc7c396d99f5940cc0f839f5424d61539621d1f2b25885ec986e8e7427502'}
 # Approved byte-for-byte release pair. Its manifests and signer are checked at packaging time.
-$approved = @{home='e1429ae708675bc086ce8066117d08e14fb6c6a3d636532bd8d30d9342db4c08';panel='ddfe1893a3c102b8f38bc15c6ee18d85c7294e3d6ec6bec1b8e119f2341ee665'}
+$approved = @{home='71901882789e5cd5a870432a12f2b079384d5d94ffa9e927c17f301a7952ec42';panel='ddfe1893a3c102b8f38bc15c6ee18d85c7294e3d6ec6bec1b8e119f2341ee665'}
 $pending = @()
 foreach ($name in 'panel','home') {
     $pkg = "house.bravia.$name"
@@ -45,12 +45,7 @@ foreach ($apk in $pending) {
     $done += $attempt
 }
 $attempt = 'HDMI and HOME checks'
-if ($map.Count) {
-    $command = @('shell','am','broadcast','--include-stopped-packages','--user','0','-n','house.bravia.home/com.gathin.tvhome.PortMapReceiver','-a','house.bravia.PORT_MAP')
-    foreach ($port in $map.Keys) { $command += @('--es',"p$port",$map[$port]) }
-    $reply = (Invoke-Tv @command) -join ' '
-    if ($reply -notmatch 'result=-1') { Write-Warning 'Port import unavailable. Runtime labels or the native selector will be used.' }
-}
+Send-PortMap $map
 if ((Get-Home) -ne $original) { throw "HOME differs from the baseline. Inspect $dir before continuing." }
 Show-Component $Preview
 Write-Host "Preview updated. HOME: $original. Backup: $dir"

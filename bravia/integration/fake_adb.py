@@ -51,6 +51,7 @@ elif cmd.startswith("shell am start -W -n "):print("Status: ok")
 elif cmd=="shell cmd package help":print("set-home-activity")
 elif cmd.startswith("shell am broadcast "):
     state["enrolled"]=args[-1]=="house.bravia.ENROLL"
+    print("Broadcast completed: result=-1")
 elif cmd.startswith("shell cmd package set-home-activity "):
     if not state["refuse"] or "house." not in args[-1]:state["home"]=args[-1]
 elif cmd=="shell dumpsys activity activities":print("mFocusedActivity "+state["home"])

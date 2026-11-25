@@ -29,3 +29,10 @@ function Read-PortMap([string[]]$Lines) {
     if (@($out.Values | Select-Object -Unique).Count -ne $out.Count) { throw 'Duplicate HDMI input ID.' }
     $out
 }
+
+function Send-PortMap($map) {
+    $command = @('shell','am','broadcast','--include-stopped-packages','--user','0','-n','house.bravia.home/com.gathin.tvhome.PortMapReceiver','-a','house.bravia.PORT_MAP')
+    foreach ($port in $map.Keys) { $command += @('--es',"p$port",$map[$port]) }
+    $reply = (Invoke-Tv @command) -join ' '
+    if ($reply -notmatch 'result=-1') { throw 'Port map import not confirmed. Check ADB and retry.' }
+}
