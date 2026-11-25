@@ -1,0 +1,38 @@
+plugins { id 'com.android.application' }
+
+def legacy = file('../../../legacy/launcher/app')
+android {
+    namespace 'com.gathin.tvhome'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'house.bravia.home'
+        minSdk 24
+        targetSdk 34
+        versionCode 13
+        versionName '1.0'
+    }
+    sourceSets {
+        main.java.srcDir new File(legacy, 'src/main/java')
+        main.res.srcDir new File(legacy, 'src/main/res')
+        test.java.srcDir new File(legacy, 'src/test/java')
+    }
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), new File(legacy,'proguard-rules.pro')
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+dependencies {
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    testImplementation 'junit:junit:4.13.2'
+}

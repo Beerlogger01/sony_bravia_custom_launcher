@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <permission android:name="house.bravia.panel.READ" android:protectionLevel="signature"/>
+  <uses-feature android:name="android.software.leanback" android:required="false"/>
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+  <application android:icon="@drawable/panel_icon" android:banner="@drawable/panel_banner" android:label="Дом · Home Assistant" android:allowBackup="false" android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network" android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".PanelActivity" android:exported="true" android:screenOrientation="landscape">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="com.gathin.tvhome.category.DOCK_CARD"/></intent-filter>
+      <meta-data android:name="com.gathin.tvhome.card" android:resource="@xml/module_card"/>
+    </activity>
+    <activity android:name=".Trend" android:exported="false"/>
+    <activity android:name=".Kiosk" android:exported="false"/>
+    <service android:name=".Summary" android:exported="true" android:permission="house.bravia.panel.READ"/>
+  </application>
+</manifest>
