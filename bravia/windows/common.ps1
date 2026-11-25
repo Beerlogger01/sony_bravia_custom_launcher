@@ -1,0 +1,94 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$Tv = $env:BRAVIA_TV
+if (!$Tv) { $Tv = Read-Host 'Sony ADB address (IP:5555)' }
+if ($Tv -notmatch '^[A-Za-z0-9.-]+:[0-9]{1,5}$') { throw 'Invalid TV address' }
+$Adb = $env:BRAVIA_ADB
+if (!$Adb) { $Adb = Join-Path ([Environment]::GetFolderPath('Desktop')) 'platform-tools\adb.exe' }
+$AliasHome = 'house.bravia.home/com.gathin.tvhome.HomeChoice'
+$Preview = 'house.bravia.home/com.gathin.tvhome.BraviaHome'
+function Invoke-Tv {
+    $lines = & $Adb -s $Tv @args
+    if ($LASTEXITCODE -ne 0 -or (($lines -join "`n") -match '(?im)^(Error|Failure|Exception|Unknown command|Security exception)')) {
+        throw "ADB operation failed: $($args[0..1] -join ' ')"
+    }
+    $lines
+}
+function Open-Tv {
+    if (!(Test-Path $Adb)) { throw "ADB missing: $Adb" }
+    $connected = $false
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $null = & $Adb connect $Tv
+        $device = (& $Adb -s $Tv get-state 2>$null) -join ''
+        if ($LASTEXITCODE -eq 0 -and $device.Trim() -eq 'device') { $connected = $true; break }
+        if ($attempt -lt 2) { Start-Sleep -Seconds 2 }
+    }
+    if (!$connected) { throw 'Wi-Fi ADB unavailable. Check address and RSA prompt, then rerun.' }
+    if (((Invoke-Tv shell getprop ro.build.version.sdk) -join '').Trim() -ne '24') { throw 'Expected API 24. Review the updated firmware.' }
+    if (((Invoke-Tv shell getprop ro.product.manufacturer) -join '').Trim() -notmatch 'Sony') { throw 'Unexpected manufacturer.' }
+    if (((Invoke-Tv shell am get-current-user) -join '').Trim() -ne '0') { throw 'Expected Android user 0.' }
+}
+function Get-Home {
+    $r = @(Invoke-Tv shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME)
+    $value = ([string]$r[-1]).Trim()
+    if ($value -notmatch '^[A-Za-z0-9_.]+/[A-Za-z0-9_.]+$' -or $value -match 'ResolverActivity|FallbackHome') { throw 'HOME is ambiguous. Select the stock HOME and retry diagnostics.' }
+    $value
+}
+function Get-Identity {
+    $id = ((Invoke-Tv shell settings get secure android_id) -join '').Trim()
+    if ($id -notmatch '^[a-fA-F0-9]{8,16}$') { throw 'Cannot identify this TV.' }
+    $id
+}
+function Save-State {
+    $homeComponent = Get-Home
+    if ($homeComponent -match '^house\.bravia\.') { throw 'Expected original HOME. Keep the original backup.' }
+    $dir = Join-Path $env:LOCALAPPDATA ('BraviaHome\'+(Get-Date -Format yyyyMMdd-HHmmss-fff))
+    $null = New-Item -ItemType Directory -Path $dir
+    Invoke-Tv shell getprop | Out-File "$dir\getprop.txt" -Encoding utf8
+    foreach ($ns in 'secure','system','global') { Invoke-Tv shell settings list $ns | Out-File "$dir\settings-$ns.txt" -Encoding utf8 }
+    Invoke-Tv shell pm list packages -d | Out-File "$dir\disabled.txt" -Encoding utf8
+    Invoke-Tv shell pm list packages -f | Out-File "$dir\packages.txt" -Encoding utf8
+    Invoke-Tv shell dumpsys tv_input | Out-File "$dir\inputs.txt" -Encoding utf8
+    Invoke-Tv shell dumpsys package preferred-activities | Out-File "$dir\preferred.txt" -Encoding utf8
+    [pscustomobject]@{ stock=$homeComponent; identity=(Get-Identity); firmware=((Invoke-Tv shell getprop ro.build.fingerprint) -join '') } |
+        ConvertTo-Json | Out-File "$dir\home.json" -Encoding utf8
+    Write-Host "Backup: $dir"
+    Write-Host "Restore: .\restore.ps1 -Backup '$dir'"
+    Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$homeComponent'"
+    $dir
+}
+function Read-State([string]$dir) {
+    $s = Get-Content -Raw -LiteralPath (Join-Path $dir home.json) | ConvertFrom-Json
+    if ($s.identity -ne (Get-Identity) -or $s.firmware -ne ((Invoke-Tv shell getprop ro.build.fingerprint) -join '') -or
+        $s.stock -notmatch '^[A-Za-z0-9_.]+/[A-Za-z0-9_.]+$' -or $s.stock -match '^house\.bravia\.|FallbackHome|ResolverActivity') { throw 'Backup does not match this firmware, TV or stock HOME.' }
+    $s
+}
+function Show-Component([string]$component) {
+    $result = (Invoke-Tv shell am start -W -n $component) -join "`n"
+    if ($result -notmatch '(?m)^Status:\s*ok') { throw "Launch failed: $component" }
+}
+
+function Copy-InstalledApk([string]$Source, [string]$Destination) {
+    if ($Source -notmatch '^/data/app/[A-Za-z0-9_./=-]+/base\.apk$') { throw 'Unexpected installed APK path' }
+    $temp = '/sdcard/Download/bravia-backup-' + [guid]::NewGuid().ToString('N') + '.apk'
+    $staged = $false
+    try {
+        try { $null = Invoke-Tv pull $Source $Destination }
+        catch {
+            Write-Host 'Direct APK pull failed. Copying through Downloads.'
+            Open-Tv
+            $staged = $true
+            $null = Invoke-Tv shell cp $Source $temp
+            $null = Invoke-Tv pull $temp $Destination
+        }
+        $bytes = ((Invoke-Tv shell stat -c %s $Source) -join '').Trim()
+        $checksum = ((Invoke-Tv shell sha256sum $Source) -join ' ').Split(' ')[0]
+        if ($bytes -notmatch '^\d+$' -or [long]$bytes -le 0 -or [long]$bytes -ne (Get-Item $Destination).Length -or
+            $checksum -ne (Get-FileHash $Destination -Algorithm SHA256).Hash) { throw "Backup integrity check failed for $Source" }
+    } finally {
+        if ($staged) {
+            try { $null = Invoke-Tv shell rm -f $temp }
+            catch { Open-Tv; $null = Invoke-Tv shell rm -f $temp }
+        }
+    }
+}

@@ -11,8 +11,8 @@ android {
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
         minSdk 24
         targetSdk 34
-        versionCode 14
-        versionName '1.1-rc1'
+        versionCode 15
+        versionName '1.2.0-rc1'
     }
     sourceSets {
         main.java.srcDir new File(legacy, 'src/main/java')
@@ -41,3 +41,4 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     testImplementation 'junit:junit:4.13.2'
 }
+apply from: rootProject.file('signing-check.gradle')

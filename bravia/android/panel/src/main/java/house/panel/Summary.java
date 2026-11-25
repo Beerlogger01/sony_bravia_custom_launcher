@@ -9,6 +9,7 @@ public final class Summary extends Service implements Feed.Listener {
     private Feed feed;
     private String[] last, lastFeatured;
     private int lastNew;
+    private String lastTheme;
     private final Messenger endpoint=new Messenger(new Handler(Looper.getMainLooper(),msg -> {
         client=msg.replyTo; last=null;
         if(client!=null) feed.add(this);
@@ -21,10 +22,11 @@ public final class Summary extends Service implements Feed.Listener {
         String[] values=feed.summary();
         String[] featured=feed.featured();
         int fresh=feed.prefs.getStringSet("new",java.util.Collections.emptySet()).size();
-        if(java.util.Arrays.equals(values,last) && java.util.Arrays.equals(featured,lastFeatured) && fresh==lastNew)return;
-        lastFeatured=featured;lastNew=fresh;
+        String theme=feed.prefs.getString("appearance","TV");
+        if(theme.equals(lastTheme) && java.util.Arrays.equals(values,last) && java.util.Arrays.equals(featured,lastFeatured) && fresh==lastNew)return;
+        lastTheme=theme;lastFeatured=featured;lastNew=fresh;
         last=values;
-        Message m=Message.obtain(); Bundle b=new Bundle(); b.putStringArray("summary",values); b.putStringArray("featured",featured); b.putInt("new",fresh); m.setData(b);
+        Message m=Message.obtain(); Bundle b=new Bundle(); b.putStringArray("summary",values); b.putStringArray("featured",featured); b.putInt("new",fresh); b.putString("theme",theme); m.setData(b);
         try {client.send(m);} catch(RemoteException e){client=null;feed.remove(this);}
     }
 }

@@ -1,0 +1,16 @@
+{
+  "domain": "bravia_launcher",
+  "name": "Bravia Launcher",
+  "codeowners": [
+    "@Beerlogger01"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
+  "documentation": "https://github.com/Beerlogger01/sony_bravia_custom_launcher",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Beerlogger01/sony_bravia_custom_launcher/issues",
+  "version": "1.2.0rc1"
+}

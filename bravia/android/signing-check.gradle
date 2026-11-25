@@ -1,0 +1,14 @@
+// Existing TVs accept updates only from the original signing certificate.
+tasks.register('checkBraviaReleaseSigner') {
+    doLast {
+        def config = android.signingConfigs.debug
+        if (!config.storeFile.isFile()) throw new GradleException('The original Android signing keystore is required for release builds.')
+        def store = java.security.KeyStore.getInstance(config.storeType ?: java.security.KeyStore.getDefaultType())
+        config.storeFile.withInputStream { store.load(it, config.storePassword.toCharArray()) }
+        def certificate = store.getCertificate(config.keyAlias)
+        def digest = java.security.MessageDigest.getInstance('SHA-256').digest(certificate.encoded).encodeHex().toString()
+        if (digest != '8c564f58900eb43a9e9a15b456381916a0e164226821c499b7f4b8944f25c82c')
+            throw new GradleException('Incompatible certificate. Use a debug build for development or sign privately with the existing key.')
+    }
+}
+tasks.matching { it.name == 'packageRelease' }.configureEach { dependsOn 'checkBraviaReleaseSigner' }

@@ -23,11 +23,25 @@ public final class BraviaHome extends Activity {
     private final LinearLayout[] pinCells=new LinearLayout[3];
     private TextView status, heroCaption, registry, network, date;
     private LinearLayout page, appRail, portRail;
-    private int accent;
+    private int accent, surface, theme;
+    private static final String[] THEMES={"Aurora Glass","Midnight Minimal","Warm Ambient"};
+    // Static gradients are drawn with the view; no frame loop, blur or wallpaper process.
+    private static final int[][] PALETTES={
+        {0xff071525,0xff113849,0xff090e20,0xd9234254,0xff8cf3dd},
+        {0xff08090b,0xff191b20,0xff050607,0xf02c2d32,0xffffffff},
+        {0xff1d1418,0xff453126,0xff151018,0xdf453737,0xffffc185}
+    };
     private float scale;
     private boolean bound;
     private final Messenger receiver=new Messenger(new Handler(Looper.getMainLooper(),msg->{
         Bundle b=msg.getData();
+        String remoteTheme=b.getString("theme","TV");
+        int desired=Arrays.asList(THEMES).indexOf(remoteTheme);
+        if(bound && desired>=0 && !remoteTheme.equals(getPreferences(0).getString("haTheme","TV"))){
+            getPreferences(0).edit().putString("haTheme",remoteTheme).putInt("theme",desired).remove("accent").apply();
+            recreate();return true;
+        }
+        if(bound && desired<0 && getPreferences(0).contains("haTheme"))getPreferences(0).edit().remove("haTheme").apply();
         String[] values=b.getStringArray("summary");
         if(bound && values!=null && values.length==6) render(values,b.getStringArray("featured"),b.getInt("new"));
         return true;
@@ -100,20 +114,20 @@ public final class BraviaHome extends Activity {
         LinearLayout r=line();page.addView(r,-1,u(50));
         FrameLayout mark=new FrameLayout(this);mark.setBackground(box(accent,11));pad(mark,7,7);
         mark.addView(icon(R.drawable.lh_house_plug,INK));r.addView(mark,u(38),u(38));gap(r,12);
-        TextView brand=text("BRAVIA",24,WHITE,true);brand.setLetterSpacing(.10f);grow(r,brand,1);
+        TextView brand=text(getString(R.string.house_name),24,WHITE,true);brand.setLetterSpacing(.10f);grow(r,brand,1);
         date=text("",18,MUTED,false);r.addView(date);gap(r,24);
         network=text("",15,MUTED,false);r.addView(network);gap(r,16);
-        status=text("",16,GREEN,true);pad(status,13,4);status.setBackground(box(TILE,18));r.addView(status);gap(r,18);
+        status=text("",16,GREEN,true);pad(status,13,4);status.setBackground(box(surface,18));r.addView(status);gap(r,18);
         TextClock clock=new TextClock(this);clock.setFormat12Hour("HH:mm");clock.setFormat24Hour("HH:mm");
         clock.setTextColor(WHITE);clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,u(29));r.addView(clock);gap(r,14);
-        FrameLayout gear=new FrameLayout(this);gear.setBackground(box(TILE,14));pad(gear,9,9);gear.addView(icon(R.drawable.lh_settings,WHITE));r.addView(gear,u(43),u(43));
+        FrameLayout gear=new FrameLayout(this);gear.setBackground(box(surface,14));pad(gear,9,9);gear.addView(icon(R.drawable.lh_settings,WHITE));r.addView(gear,u(43),u(43));
         gear.setContentDescription("Настройки Sony");styleAction(gear,this::sonySettings);
     }
     private FrameLayout hero(){
-        FrameLayout frame=new FrameLayout(this);frame.setBackground(box(TILE,14));frame.setClipToOutline(true);
+        FrameLayout frame=new FrameLayout(this);frame.setBackground(box(surface,14));frame.setClipToOutline(true);
         ImageView photo=new ImageView(this);photo.setScaleType(ImageView.ScaleType.CENTER_CROP);photo.setImageResource(R.drawable.alpine);
-        if(getPreferences(0).getBoolean("landscape",true))frame.addView(photo,-1,-1);
-        View veil=new View(this);veil.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xf3101d22,0xc1324246,0x151c2529}));frame.addView(veil,-1,-1);
+        if(theme!=1 && getPreferences(0).getBoolean("landscape",true))frame.addView(photo,-1,-1);
+        View veil=new View(this);veil.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{PALETTES[theme][0],PALETTES[theme][1] & 0xbfffffff,PALETTES[theme][2] & 0x33ffffff}));frame.addView(veil,-1,-1);
         LinearLayout content=column();pad(content,27,20);frame.addView(content,-1,-1);
         heroCaption=text("HOME ASSISTANT",14,accent,true);heroCaption.setLetterSpacing(.12f);content.addView(heroCaption);
         content.addView(text("Мой дом",40,WHITE,true));grow(content,new View(this),1);
@@ -128,7 +142,7 @@ public final class BraviaHome extends Activity {
         styleAction(frame,()->panel(""));return frame;
     }
     private void metric(LinearLayout row,int index,String label,int res,int accent,String section){
-        LinearLayout card=column();card.setGravity(Gravity.CENTER_VERTICAL);pad(card,17,8);card.setBackground(box(TILE,14));
+        LinearLayout card=column();card.setGravity(Gravity.CENTER_VERTICAL);pad(card,17,8);card.setBackground(box(surface,14));
         LinearLayout header=line();card.addView(header,-1,u(25));addIcon(header,res,accent,22);gap(header,8);header.addView(text(label,16,MUTED,false));
         gap(card,4);metrics[index]=text("—",index==2?19:27,WHITE,true);card.addView(metrics[index]);styleAction(card,()->panel(section));card.setOnLongClickListener(v->{widgetMenu(index,label);return true;});grow(row,card,1);
     }
@@ -166,7 +180,7 @@ public final class BraviaHome extends Activity {
         if(appRail.getChildCount()>0)gap(appRail,10);
         LinearLayout card=column();card.setGravity(Gravity.CENTER_VERTICAL);pad(card,15,10);card.setBackground(box(back,14));
         addIcon(card,image,color,34);gap(card,9);card.addView(text(label,18,WHITE,true));styleAction(card,action);
-        if(slot!=null)card.setOnLongClickListener(v->{chooseApp(slot);return true;});grow(appRail,card,1);
+        card.setTag(slot);card.setOnLongClickListener(v->{editAppTile(slot);return true;});grow(appRail,card,1);
     }
     private String favorite(String slot,String fallback){return getPreferences(0).getString(slot,fallback);}
     private void appSlot(String slot,String fallback,String name,int img,int tint,int bg){
@@ -184,11 +198,33 @@ public final class BraviaHome extends Activity {
     }
     private void refreshApps(){
         appRail.removeAllViews();
-        appSlot("video","com.google.android.youtube.tv","YouTube",R.drawable.lh_play,0xffffae9b,0xff422d32);
-        appSlot("music","com.spotify.tv.android","Spotify",R.drawable.lh_headphones,GREEN,0xff263b35);
-        appTile("Эфир",R.drawable.lh_radio_tower,0xff9cd2ec,0xff293640,()->app("com.sony.dtv.tvx"),null);
-        appTile("Трансляция",R.drawable.lh_cast,LILAC,0xff302f3e,this::mirroring,null);
-        appTile("Все приложения",R.drawable.lh_layout_grid,WHITE,TILE,()->open(new Intent(this,LibraryScreen.class)),null);
+        for(String slot:getPreferences(0).getString("appOrder","video,music,tv,cast,all").split(",")){
+            if(getPreferences(0).getBoolean("hideApp."+slot,false))continue;
+            switch(slot){
+                case "video":appSlot(slot,"com.google.android.youtube.tv","YouTube",R.drawable.lh_play,0xffffae9b,0xff422d32);break;
+                case "music":appSlot(slot,"com.spotify.tv.android","Spotify",R.drawable.lh_headphones,GREEN,0xff263b35);break;
+                case "tv":appTile("Эфир",R.drawable.lh_radio_tower,0xff9cd2ec,0xff293640,()->app("com.sony.dtv.tvx"),slot);break;
+                case "cast":appTile("Трансляция",R.drawable.lh_cast,LILAC,0xff302f3e,this::mirroring,slot);break;
+                case "all":appTile("Все приложения",R.drawable.lh_layout_grid,WHITE,TILE,()->open(new Intent(this,LibraryScreen.class)),slot);break;
+            }
+        }
+    }
+    private void editAppTile(String slot){
+        SharedPreferences p=getPreferences(0);
+        ArrayList<String> actions=new ArrayList<>(Arrays.asList("Влево","Вправо","Скрыть"));
+        if(slot.equals("video")||slot.equals("music"))actions.add("Заменить приложение");
+        new AlertDialog.Builder(this).setTitle("Плитка приложения").setItems(actions.toArray(new String[0]),(d,n)->{
+            if(n==3){chooseApp(slot);return;}
+            if(n==2)p.edit().putBoolean("hideApp."+slot,true).apply();
+            else{
+                List<String> order=Arrays.asList(p.getString("appOrder","video,music,tv,cast,all").split(","));
+                int pos=order.indexOf(slot),step=n==0?-1:1,next=pos+step;
+                while(next>=0 && next<order.size() && p.getBoolean("hideApp."+order.get(next),false))next+=step;
+                if(next<0 || next>=order.size())return;
+                Collections.swap(order,pos,next);p.edit().putString("appOrder",TextUtils.join(",",order)).apply();
+            }
+            refreshApps();View focused=appRail.findViewWithTag(slot);if(focused!=null)focused.requestFocus();
+        }).show();
     }
     private void chooseApp(String slot){
         Intent filter=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
@@ -197,20 +233,22 @@ public final class BraviaHome extends Activity {
         for(ResolveInfo app:apps){names.add(app.loadLabel(getPackageManager()).toString());pkgs.add(app.activityInfo.packageName);}
         new AlertDialog.Builder(this).setTitle("Избранное приложение").setItems(names.toArray(new String[0]),(d,n)->{
             SharedPreferences.Editor e=getPreferences(0).edit();if(n==0)e.remove(slot);else e.putString(slot,pkgs.get(n-1));e.apply();
-            refreshApps();appRail.getChildAt(slot.equals("video")?0:2).requestFocus();
+            refreshApps();View focused=appRail.findViewWithTag(slot);if(focused!=null)focused.requestFocus();
         }).show();
     }
     private TextView control(LinearLayout row,String name,int image,Runnable action){
         if(row.getChildCount()>0)gap(row,10);
-        LinearLayout c=line();pad(c,15,0);c.setBackground(box(0xff1b2029,14));addIcon(c,image,accent,21);gap(c,10);
+        LinearLayout c=line();pad(c,15,0);c.setBackground(box(surface,14));addIcon(c,image,accent,21);gap(c,10);
         TextView t=text(name,17,WHITE,false);c.addView(t);styleAction(c,action);grow(row,c,1);return t;
     }
     public void onCreate(Bundle state){
         super.onCreate(state);
         android.util.DisplayMetrics dm=getResources().getDisplayMetrics();
         scale=Math.min(dm.widthPixels/1200f,dm.heightPixels/675f);
-        page=column();page.setGravity(Gravity.CENTER_VERTICAL);pad(page,44,18);page.setBackgroundColor(INK);setContentView(page);
-        accent=getPreferences(0).getInt("accent",GOLD);
+        page=column();page.setGravity(Gravity.CENTER_VERTICAL);pad(page,44,18);theme=getPreferences(0).getInt("theme",0);
+        int[] colors=PALETTES[theme];
+        page.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{colors[0],colors[1],colors[2]}));
+        surface=colors[3];accent=getPreferences(0).getInt("accent",colors[4]);setContentView(page);
         masthead();gap(page,13);overview();gap(page,12);
         page.addView(text("Источники",22,WHITE,true));gap(page,5);
         portRail=line();page.addView(portRail,-1,u(55));refreshPorts(0);gap(page,12);
@@ -218,7 +256,7 @@ public final class BraviaHome extends Activity {
         appsTitle.addView(text("Избранные приложения  ·  удерживайте OK для замены",14,MUTED,false));gap(page,6);
         appRail=line();page.addView(appRail,-1,u(85));refreshApps();gap(page,13);
         LinearLayout controls=line();page.addView(controls,-1,u(48));
-        control(controls,"Домашний дашборд",R.drawable.lh_panels_top_left,()->panel("dashboard"));
+        control(controls,getString(R.string.house_dashboard),R.drawable.lh_panels_top_left,()->panel("dashboard"));
         registry=control(controls,"Каталог",R.drawable.lh_notebook_tabs,()->panel("Каталог · добавить на главную"));
         control(controls,"Мои карточки",R.drawable.lh_sliders_horizontal,()->panel("Избранное"));
         control(controls,"Вид экрана",R.drawable.lh_settings,this::appearance);
@@ -268,7 +306,7 @@ public final class BraviaHome extends Activity {
         for(char ch:order.toCharArray()){
             int port=ch-'0';if(getPreferences(0).getBoolean("hidden"+port,false))continue;
             if(portRail.getChildCount()>0)gap(portRail,10);
-            LinearLayout tile=line();pad(tile,13,0);tile.setBackground(box(0xff302e40,14));addIcon(tile,R.drawable.lh_hdmi,LILAC,27);gap(tile,10);
+            LinearLayout tile=line();pad(tile,13,0);tile.setBackground(box(surface,14));addIcon(tile,R.drawable.lh_hdmi,accent,27);gap(tile,10);
             String alias=getPreferences(0).getString("name"+port,"");
             tile.addView(text("HDMI "+port+(alias.isEmpty()?"":"  ·  "+alias),18,WHITE,true));
             styleAction(tile,()->switchPort(port));tile.setOnLongClickListener(v->{editPort(port);return true;});grow(portRail,tile,1);
@@ -301,11 +339,13 @@ public final class BraviaHome extends Activity {
         }).show();
     }
     private void appearance(){
-        String[] options={"Акцентный цвет","Пейзаж / градиент","Показать скрытые HDMI","Карточки Home Assistant","Настроить видеоприложение","Настроить музыку","Вернуть скрытые виджеты"};
+        String[] options={"Акцентный цвет","Пейзаж / градиент","Показать скрытые HDMI","Карточки Home Assistant","Настроить видеоприложение","Настроить музыку","Вернуть скрытые виджеты","Тема оформления","Вернуть скрытые приложения"};
         new AlertDialog.Builder(this).setTitle("Вид экрана").setItems(options,(d,n)->{
             if(n==0)new AlertDialog.Builder(this).setTitle("Цвет фокуса").setItems(new String[]{"Янтарь","Мята","Лаванда"},(dialog,i)->{
                 getPreferences(0).edit().putInt("accent",new int[]{GOLD,GREEN,LILAC}[i]).apply();recreate();
             }).show();
+            if(n==8){SharedPreferences.Editor e=getPreferences(0).edit();for(String slot:new String[]{"video","music","tv","cast","all"})e.remove("hideApp."+slot);e.apply();refreshApps();}
+            if(n==7)new AlertDialog.Builder(this).setTitle("Тема оформления").setSingleChoiceItems(THEMES,theme,(a,i)->{getPreferences(0).edit().putInt("theme",i).remove("accent").apply();a.dismiss();recreate();}).show();
             if(n==1){getPreferences(0).edit().putBoolean("landscape",!getPreferences(0).getBoolean("landscape",true)).apply();recreate();}
             if(n==2)restorePorts();if(n==3)panel("Избранное");if(n==4)chooseApp("video");if(n==5)chooseApp("music");
             if(n==6){SharedPreferences.Editor e=getPreferences(0).edit();for(int i=0;i<4;i++)e.remove("hideWidget"+i);e.apply();recreate();}

@@ -33,7 +33,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         scale=Math.min(getResources().getDisplayMetrics().widthPixels/1200f,getResources().getDisplayMetrics().heightPixels/675f);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.HORIZONTAL);box.setBackgroundColor(0xff12161d);setContentView(box);
         LinearLayout side=column();side.setBackgroundColor(0xff1c212a);side.setPadding(px(28),px(29),px(22),px(20));box.addView(side,px(275),-1);
-        TextView brand=type("BRAVIA",21,GOLD,true);brand.setLetterSpacing(.12f);side.addView(brand);
+        TextView brand=type(getString(R.string.house_name),21,GOLD,true);brand.setLetterSpacing(.12f);side.addView(brand);
         TextView sub=type("Home Assistant",17,MUTED,false);side.addView(sub);
         navigation=new ListView(this);configureList(navigation);LinearLayout.LayoutParams navSize=new LinearLayout.LayoutParams(-1,0,1);navSize.topMargin=px(20);side.addView(navigation,navSize);
         navAdapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,MENU){
@@ -168,7 +168,16 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         ArrayList<String> actions=new ArrayList<>(Arrays.asList(choices));
         if(row!=null && Arrays.asList("temperature","humidity","illuminance").contains(row.optString("dc"))) actions.add("История за 24 часа");
         if(row!=null)actions.add("Выбрать раздел");
+        String toggle=row!=null && "on".equals(row.optString("value"))?"Выключить":"Включить";
+        if(row!=null && row.optBoolean("controllable") && "В сети".equals(feed.status))actions.add(toggle);
         new AlertDialog.Builder(this).setTitle(row==null?key:row.optString("eid")).setItems(actions.toArray(new String[0]),(d,n)->{
+            if(actions.get(n).equals(toggle)){
+                String endpoint=feed.prefs.getString("bridge",""), sealed=feed.prefs.getString("secret","");
+                new Thread(()->{try{
+                    TvApi.post(endpoint,"action",new JSONObject().put("key",key).put("action",toggle.equals("Выключить")?"turn_off":"turn_on"),Vault.open(sealed));
+                }catch(Exception ex){runOnUiThread(()->toast("Команда не подтверждена. Проверьте разрешение в HA"));}},"bravia-action").start();
+                return;
+            }
             if(actions.get(n).equals("История за 24 часа")){
                 startActivity(new Intent(this,Trend.class).putExtra("key",key).putExtra("unit",row.optString("unit")).putExtra("title",row.optString("title")));return;
             }
@@ -196,7 +205,11 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     }
     private void settings(){
         LinearLayout fields=new LinearLayout(this);fields.setPadding(dp(20),0,dp(20),0);fields.setOrientation(LinearLayout.VERTICAL);
-        EditText bridge=field(fields,"HTTPS-адрес bridge",feed.prefs.getString("bridge",""),false);
+        String current=feed.prefs.getString("bridge","");
+        boolean integrated=current.endsWith("/api/bravia_launcher");
+        EditText bridge=field(fields,"HTTPS-адрес HA или прежнего bridge",integrated?current.substring(0,current.length()-"/api/bravia_launcher".length()):current,false);
+        EditText code=field(fields,"Одноразовый код из Bravia Launcher в HA","",true);
+        Button pair=new Button(this);pair.setText("Привязать телевизор");fields.addView(pair);
         EditText key=field(fields,"Ключ телевизора · для нового адреса введите заново","",true);
         EditText ha=field(fields,"Адрес HA для браузера",feed.prefs.getString("browser",""),false);
         EditText path=field(fields,"Путь дашборда · пусто для автоопределения",feed.prefs.getString("manual",""),false);
@@ -207,8 +220,39 @@ public final class PanelActivity extends Activity implements Feed.Listener {
                 .setPositiveButton("Удалить",(a,b)->{try{Vault.clear();feed.stop();feed.prefs.edit().clear().commit();feed.rows=new JSONArray();feed.stamp=0;feed.dashboard="";feed.restart();}catch(Exception e){toast("Ошибка хранилища");}})
                 .setNegativeButton("Назад",null).show()).create();
         dialog.show();
+        pair.setOnClickListener(v->{
+            final String url, digits=code.getText().toString().trim();
+            try {url=origin(bridge.getText().toString(),true);}
+            catch(Exception ex){toast("Введите HTTPS-адрес HA без пути");return;}
+            if(!digits.matches("[0-9]{8}")){toast("Нужны восемь цифр");return;}
+            pair.setEnabled(false);dialog.setCancelable(false);
+            for(int button:new int[]{-1,-2,-3})dialog.getButton(button).setEnabled(false);
+            new Thread(()->{
+                String endpoint=url+"/api/bravia_launcher";
+                try{
+                    String token=TvApi.post(endpoint,"pair",new JSONObject().put("code",digits),null).getString("token");
+                    String sealed=Vault.seal(token);
+                    runOnUiThread(()->{
+                        feed.stop();
+                        SharedPreferences.Editor edit=feed.prefs.edit();
+                        if(!endpoint.equals(current)){
+                            edit.remove("rows").remove("stamp").remove("path").remove("remotePins").remove("new");
+                            feed.rows=new JSONArray();feed.stamp=0;feed.dashboard="";
+                        }
+                        edit.putString("secret",sealed).putString("bridge",endpoint).putString("browser",url).apply();
+                        feed.restart();feed.notifyListeners();dialog.dismiss();toast("Телевизор привязан");
+                    });
+                }catch(Exception ex){runOnUiThread(()->{
+                    pair.setEnabled(true);dialog.setCancelable(true);
+                    for(int button:new int[]{-1,-2,-3})dialog.getButton(button).setEnabled(true);
+                    toast(ex instanceof java.io.IOException && !(ex instanceof javax.net.ssl.SSLException) &&
+                        ex.getClass()==java.io.IOException.class?ex.getMessage():"Проверьте сеть, имя сервера и сертификат TLS");
+                });}
+            },"bravia-pair").start();
+        });
         dialog.getButton(-1).setOnClickListener(v->{try{
             String url=origin(bridge.getText().toString(),true), rawKey=key.getText().toString();
+            if(integrated && current.equals(url+"/api/bravia_launcher") && rawKey.isEmpty())url=current;
             if(rawKey.isEmpty() && !url.equals(feed.prefs.getString("bridge","")))throw new IllegalArgumentException();
             String browser=ha.getText().toString().trim(), manual=path.getText().toString().trim();
             if(!manual.isEmpty()&&!manual.matches("/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"))throw new IllegalArgumentException();

@@ -123,6 +123,12 @@ final class Feed {
                 fresh.retainAll(now);now.removeAll(old);fresh.addAll(now);
                 if(!fresh.equals(before))prefs.edit().putStringSet("new",fresh).apply();
             }
+            String appearance=data.optString("appearance","TV");
+            if(!appearance.equals(prefs.getString("appearance","TV")))prefs.edit().putString("appearance",appearance).apply();
+            JSONArray remote=data.optJSONArray("favorites");
+            if(remote!=null && !remote.toString().equals(prefs.getString("remotePins","[]"))){
+                prefs.edit().putString("remotePins",remote.toString()).putString("pins",remote.toString()).apply();
+            }
             rows=updated;
             stamp=data.optLong("stamp");
             dashboard=data.optString("dashboard");
