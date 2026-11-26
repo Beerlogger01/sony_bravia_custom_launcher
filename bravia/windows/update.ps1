@@ -22,11 +22,11 @@ foreach ($name in 'panel','home') {
     $old = Join-Path $dir "$name-before.apk"
     Copy-InstalledApk $Matches[1] $old
     $apk = Join-Path $ApkDir "$name.apk"
-    $digest = (Get-FileHash $apk -Algorithm SHA256).Hash
+    $digest = (Get-LocalApkDigest $apk)
     $sum = @(Get-Content (Join-Path $ApkDir 'SHA256SUMS') | Where-Object { $_ -match "^[a-fA-F0-9]{64}  $name\.apk$" })
     if ($digest -ne $approved[$name]) { throw "APK differs from the verified release: $name" }
     if ($sum.Count -ne 1 -or $sum[0].Substring(0,64) -ne $digest) {throw "Unexpected new APK: $name"}
-    $installed = (Get-FileHash $old -Algorithm SHA256).Hash
+    $installed = (Get-LocalApkDigest $old)
     if ($installed -eq $digest) { continue }
     if ($installed -ne $previous[$name] -and $installed -ne $rc1[$name]) {
         if (!$Apksigner) {throw "Installed $pkg differs from the first distribution. Pass -Apksigner with the Android SDK apksigner.bat path to verify the installed signature."}

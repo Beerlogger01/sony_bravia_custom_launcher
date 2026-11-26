@@ -68,6 +68,14 @@ function Show-Component([string]$component) {
     if ($result -notmatch '(?m)^Status:\s*ok') { throw "Launch failed: $component" }
 }
 
+function Get-LocalApkDigest([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $hash = [Security.Cryptography.SHA256]::Create()
+        try { return [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','') }
+        finally { $hash.Dispose() }
+    } finally { $stream.Dispose() }
+}
 # Windows PowerShell 5.1 decodes native pipelines as text. Hash the raw stdout stream.
 function Get-InstalledApkDigest([string]$Source) {
     if ($Source -notmatch '^/data/app/[A-Za-z0-9_./=-]+/base\.apk$') { throw 'Unexpected APK hash path' }
@@ -101,7 +109,7 @@ function Copy-InstalledApk([string]$Source, [string]$Destination) {
         $bytes = ((Invoke-Tv shell stat -c %s $Source) -join '').Trim()
         $checksum = Get-InstalledApkDigest $Source
         if ($bytes -notmatch '^\d+$' -or [long]$bytes -le 0 -or [long]$bytes -ne (Get-Item $Destination).Length -or
-            $checksum -ne (Get-FileHash $Destination -Algorithm SHA256).Hash) { throw "Backup integrity check failed for $Source" }
+            $checksum -ne (Get-LocalApkDigest $Destination)) { throw "Backup integrity check failed for $Source" }
     } finally {
         if ($staged) {
             try { $null = Invoke-Tv shell rm -f $temp }

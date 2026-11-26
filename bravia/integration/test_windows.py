@@ -84,7 +84,7 @@ class WindowsScripts(unittest.TestCase):
             info["fail_install"]="home";state.write_text(json.dumps(info))
             failed=run();self.assertNotEqual(failed.returncode,0)
             partial=json.loads(state.read_text())
-            self.assertEqual(partial["files"]["panel"],b"new".hex())
+            self.assertEqual(partial["files"]["panel"],b"new".hex(),failed.stdout+failed.stderr)
             self.assertEqual(partial["files"]["home"],b"old".hex())
             self.assertEqual(partial["temp"],{})
             self.assertIn("panel.apk",failed.stderr)

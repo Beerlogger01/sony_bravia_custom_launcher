@@ -13,7 +13,7 @@ if (!$SetHome) {
     foreach ($name in 'panel','home') {
         $apk = Join-Path $ApkDir "$name.apk"
         $expected = (Get-Content (Join-Path $ApkDir 'SHA256SUMS') | Where-Object { $_ -match "  $name\.apk$" }) -split ' '
-        if ((Get-FileHash $apk -Algorithm SHA256).Hash -ne $expected[0]) {throw "Hash mismatch: $name"}
+        if ((Get-LocalApkDigest $apk) -ne $expected[0]) {throw "Hash mismatch: $name"}
     }
     foreach ($name in 'panel','home') {
         $apk = Join-Path $ApkDir "$name.apk"
@@ -25,7 +25,7 @@ if (!$SetHome) {
             $tmp = [IO.Path]::GetTempFileName()
             try {
                 Copy-InstalledApk $Matches[1] $tmp
-                if ((Get-FileHash $apk).Hash -ne (Get-FileHash $tmp).Hash) { throw "Existing APK differs: $pkg" }
+                if ((Get-LocalApkDigest $apk) -ne (Get-LocalApkDigest $tmp)) { throw "Existing APK differs: $pkg" }
             } finally { Remove-Item -LiteralPath $tmp }
         } else { Invoke-Tv install $apk }
     }
