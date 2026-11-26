@@ -127,6 +127,10 @@ async def test(config):
             async with client.get(prefix+"/events",headers={"Authorization":"Bearer "+replacement},ssl=ctx) as res:
                 assert res.status==200
                 assert "rows" in json.loads((await res.content.readline())[6:])
+                assert await restarted.config_entries.async_reload(entry.entry_id)
+                assert not (await asyncio.wait_for(res.content.read(), 5)).strip()
+            async with client.get(prefix+"/events",headers={"Authorization":"Bearer "+replacement},ssl=ctx) as res:
+                assert res.status==200 and "rows" in json.loads((await res.content.readline())[6:])
                 restored=restarted.config_entries.async_get_entry(entry.entry_id)
                 restarted.config_entries.async_update_entry(restored,data={})
                 await asyncio.wait_for(res.content.read(),5)

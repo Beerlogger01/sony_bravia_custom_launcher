@@ -77,7 +77,7 @@ class Events(HomeAssistantView):
         before = None
         try:
             await stream.prepare(request)
-            while True:
+            while hass.data[DOMAIN]["entries"].get(entry.entry_id) is state:
                 state["wake"].clear()
                 try:
                     authorize(hass, token)
@@ -127,7 +127,7 @@ class Events(HomeAssistantView):
             pass
         finally:
             state["connected"] = False
-            if hass.config_entries.async_get_entry(entry.entry_id) and state["last"]:
+            if hass.data[DOMAIN]["entries"].get(entry.entry_id) is state and state["last"]:
                 hass.config_entries.async_update_entry(entry, data={**entry.data, "last": state["last"]})
         return stream
 
