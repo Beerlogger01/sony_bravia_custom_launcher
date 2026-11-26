@@ -13,17 +13,22 @@ from .const import DOMAIN, PREFIX
 from .credentials import digest
 from .projection import rows
 
+from .transport import allowed
+
 def runtime(request):
-    if not request.secure:
+    hass = request.app[KEY_HASS]
+    if not request.secure and not any(allowed(request, e.options) for e in hass.config_entries.async_entries(DOMAIN)):
         raise web.HTTPForbidden(text="HTTPS required")
     return request.app[KEY_HASS]
 
-def authorize(hass, token):
+def authorize(hass, token, request):
     if not token or len(token) > 128:
         raise web.HTTPUnauthorized()
     value = digest(token)
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.entry_id in hass.data[DOMAIN]["entries"] and hmac.compare_digest(entry.data.get("digest",""),value):
+            if not allowed(request, entry.options):
+                raise web.HTTPForbidden()
             return entry
     raise web.HTTPUnauthorized()
 
@@ -52,7 +57,7 @@ class Pair(HomeAssistantView):
         if not isinstance(code,str) or len(code)!=8 or not code.isascii() or not code.isdigit():
             raise web.HTTPBadRequest()
         try:
-            key = hass.data[DOMAIN]["pairing"].redeem(code)
+            key = hass.data[DOMAIN]["pairing"].redeem(code, lambda key: (entry := hass.config_entries.async_get_entry(key)) is not None and allowed(request, entry.options))
         except PermissionError as exc:
             raise web.HTTPTooManyRequests() from exc
         if not key or not (entry := hass.config_entries.async_get_entry(key)):
@@ -68,7 +73,7 @@ class Events(HomeAssistantView):
     async def get(self, request):
         hass = runtime(request)
         token = bearer(request)
-        entry = authorize(hass, token)
+        entry = authorize(hass, token, request)
         state = hass.data[DOMAIN]["entries"][entry.entry_id]
         if state["connected"]:
             raise web.HTTPConflict()
@@ -80,8 +85,8 @@ class Events(HomeAssistantView):
             while hass.data[DOMAIN]["entries"].get(entry.entry_id) is state:
                 state["wake"].clear()
                 try:
-                    authorize(hass, token)
-                except web.HTTPUnauthorized:
+                    authorize(hass, token, request)
+                except (web.HTTPUnauthorized, web.HTTPForbidden):
                     break
                 now = int(time.time())
                 current = rows(hass, entry.options)
@@ -135,7 +140,7 @@ class History(HomeAssistantView):
     url, name, requires_auth = PREFIX+"/history", DOMAIN+":history", False
     async def get(self,request):
         hass=runtime(request)
-        entry=authorize(hass,bearer(request))
+        entry=authorize(hass,bearer(request),request)
         key=request.query.get("key","")
         if key not in rows(hass,entry.options):
             raise web.HTTPForbidden()
@@ -147,7 +152,7 @@ class Action(HomeAssistantView):
     async def post(self,request):
         hass=runtime(request)
         data=await body(request)
-        entry=authorize(hass,bearer(request))
+        entry=authorize(hass,bearer(request),request)
         key,action=data.get("key"),data.get("action")
         if not isinstance(key,str) or action not in ("turn_on","turn_off"):
             raise web.HTTPBadRequest()

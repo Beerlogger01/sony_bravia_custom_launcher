@@ -16,7 +16,8 @@
           "cards": "Cards",
           "pair": "Issue pairing code",
           "revoke": "Revoke access",
-          "status": "Connection"
+          "status": "Connection",
+          "transport": "Local network (HTTP)"
         }
       },
       "cards": {
@@ -42,6 +43,14 @@
       "status": {
         "title": "Connection",
         "description": "Stream {live}. Last contact UTC {last}"
+      },
+      "transport": {
+        "title": "Local network (HTTP)",
+        "description": "HTTP exposes the code, key and data to the network. Use only on a trusted LAN. Changes require pairing again.",
+        "data": {
+          "lan_http": "Local network (HTTP)",
+          "tv_ip": "TV IPv4 address"
+        }
       }
     },
     "abort": {
@@ -49,7 +58,8 @@
       "revoked": "Access revoked"
     },
     "error": {
-      "invalid_path": "Enter a path starting with /"
+      "invalid_path": "Enter a path starting with /",
+      "invalid_ip": "Enter a private IPv4 address"
     }
   }
 }

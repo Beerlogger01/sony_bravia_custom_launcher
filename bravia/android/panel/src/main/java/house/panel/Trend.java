@@ -5,25 +5,26 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.*;
-import javax.net.ssl.HttpsURLConnection;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.io.*;
 import org.json.*;
 
 public final class Trend extends Activity {
-    private volatile HttpsURLConnection pending;
+    private volatile HttpURLConnection pending;
     protected void onCreate(Bundle b){
         super.onCreate(b);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(40,24,40,32);
         TextView title=new TextView(this);title.setTextSize(24);title.setText(getIntent().getStringExtra("title")+"   ·   24 часа");layout.addView(title);
         TextView info=new TextView(this);info.setText("Загрузка истории…");layout.addView(info);setContentView(layout);
         Feed feed=Feed.get(this);
+        String endpoint=feed.prefs.getString("bridge",""),sealed=feed.prefs.getString("secret","");
         new Thread(()->{
-            HttpsURLConnection c=null;
+            HttpURLConnection c=null;
             try {
-                c=(HttpsURLConnection)new URL(feed.prefs.getString("bridge","")+"/v1/history?key="+Uri.encode(getIntent().getStringExtra("key"))).openConnection();
+                c=TvApi.open(endpoint+"/v1/history?key="+Uri.encode(getIntent().getStringExtra("key")));
                 pending=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(8000);c.setReadTimeout(12000);
-                c.setRequestProperty("Authorization","Bearer "+Vault.open(feed.prefs.getString("secret","")));
+                c.setRequestProperty("Authorization","Bearer "+Vault.open(sealed));
                 StringBuilder raw=new StringBuilder();
                 try(BufferedReader in=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"))){
                     String line;while((line=in.readLine())!=null)raw.append(line);
@@ -55,5 +56,5 @@ public final class Trend extends Activity {
             finally{if(c!=null)c.disconnect();pending=null;}
         },"bravia-history").start();
     }
-    protected void onDestroy(){HttpsURLConnection c=pending;if(c!=null)new Thread(c::disconnect).start();super.onDestroy();}
+    protected void onDestroy(){HttpURLConnection c=pending;if(c!=null)new Thread(c::disconnect).start();super.onDestroy();}
 }

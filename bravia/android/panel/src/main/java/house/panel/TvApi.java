@@ -2,12 +2,24 @@ package house.panel;
 
 import java.io.*;
 import java.net.URL;
-import javax.net.ssl.HttpsURLConnection;
+import java.net.HttpURLConnection;
 import org.json.JSONObject;
 
 final class TvApi {
+    static final String LAN = "http://"+BuildConfig.LAN_HOST+":8123";
+    static HttpURLConnection open(String address) throws IOException {
+        URL url = new URL(address);
+        if ("http".equals(url.getProtocol())) {
+            if (!address.startsWith(LAN + "/api/bravia_launcher/v1/"))
+                throw new IOException("Unexpected LAN destination");
+            return (HttpURLConnection)url.openConnection(java.net.Proxy.NO_PROXY);
+        }
+        if (!"https".equals(url.getProtocol()) || url.getUserInfo()!=null)
+            throw new IOException("Invalid HTTPS destination");
+        return (HttpURLConnection)url.openConnection();
+    }
     static JSONObject post(String endpoint, String method, JSONObject data, String token) throws Exception {
-        HttpsURLConnection c=(HttpsURLConnection)new URL(endpoint+"/v1/"+method).openConnection();
+        HttpURLConnection c=TvApi.open(endpoint+"/v1/"+method);
         try {
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(8000); c.setReadTimeout(10000);
