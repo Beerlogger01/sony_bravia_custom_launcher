@@ -37,16 +37,16 @@ class Options(config_entries.OptionsFlow):
                 for field in ("entities","favorites","hidden","control"):
                     data[field]=[identity(self.hass,eid) for eid in data.get(field,[])]
                 return self.async_create_entry(title="",data=data)
-        fields={vol.Optional("areas",default=options.get("areas",[])):selector.AreaSelector(selector.AreaSelectorConfig(multiple=True))}
+        fields={vol.Optional("areas",description={"suggested_value": options.get("areas",[])}):selector.AreaSelector(selector.AreaSelectorConfig(multiple=True))}
         for field in ("entities","favorites","hidden","control"):
             values=[eid for key in options.get(field,[]) if (eid:=resolve(self.hass,key))]
             config={"multiple":True}
             if field=="control":
                 config["filter"]={"domain":["light","switch"]}
-            fields[vol.Optional(field,default=values)]=selector.EntitySelector(selector.EntitySelectorConfig(**config))
+            fields[vol.Optional(field,description={"suggested_value": values})]=selector.EntitySelector(selector.EntitySelectorConfig(**config))
         fields[vol.Optional("appearance",default=options.get("appearance","TV"))]=selector.SelectSelector(
             selector.SelectSelectorConfig(options=["TV","Aurora Glass","Midnight Minimal","Warm Ambient"]))
-        fields[vol.Optional("dashboard",default=options.get("dashboard",""))]=str
+        fields[vol.Optional("dashboard",description={"suggested_value": options.get("dashboard","")})]=str
         return self.async_show_form(step_id="cards",data_schema=vol.Schema(fields),errors=errors)
 
     async def async_step_pair(self,user_input=None):

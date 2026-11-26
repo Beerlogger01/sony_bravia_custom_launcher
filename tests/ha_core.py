@@ -73,6 +73,16 @@ async def test(config):
                     raise AssertionError("unexpected EOF")
                 snap=await message()
                 assert len(snap["rows"])==1 and snap["favorites"]==[reg.id]
+                # A normal TV sees a filtered projection. Exercise the largest explicit selection too.
+                fixture_ids=[f"sensor.fixture_{i}" for i in range(731)]
+                await option("cards",{"entities":fixture_ids,"areas":[room.id],"favorites":[eid]})
+                assert len((await message())["upsert"])==731
+                for i, entity_id in enumerate(fixture_ids):
+                    hass.states.async_set(entity_id,str(i+1))
+                burst=await message()
+                assert len(burst["upsert"])==731 and not burst["remove"]
+                await option("cards",{"areas":[room.id],"favorites":[eid]})
+                assert len((await message())["remove"])==731
                 hass.states.async_set(eid,"22",{"device_class":"temperature","unit_of_measurement":"°C"})
                 assert (await message())["upsert"][0]["value"]=="22"
                 async with client.post(prefix+"/action",json={"key":reg.id,"action":"turn_on"},headers=hdr,ssl=ctx) as res:assert res.status==403
@@ -104,6 +114,10 @@ async def test(config):
                 hass.services.async_register("light","turn_on",record)
                 async with client.post(prefix+"/action",json={"key":lamp.id,"action":"turn_on"},headers=hdr,ssl=ctx) as res:
                     assert res.status==200 and calls==[lamp.entity_id]
+                await option("cards",{"entities":[lamp.entity_id]})
+                assert not (await message())["upsert"][0]["controllable"]
+                async with client.post(prefix+"/action",json={"key":lamp.id,"action":"turn_on"},headers=hdr,ssl=ctx) as res:
+                    assert res.status==403 and calls==[lamp.entity_id]
                 await option("revoke",{})
                 assert await asyncio.wait_for(stream.content.read(),3) in (b"\n",b"")
             async with client.get(prefix+"/events",headers=hdr,ssl=ctx) as res:assert res.status==401
