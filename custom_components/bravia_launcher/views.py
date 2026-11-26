@@ -110,8 +110,8 @@ class Events(HomeAssistantView):
                         samples.clear()
                     if not samples or now//300 != samples[-1][0]//300:
                         samples.append((now,value,row["unit"]))
-                settings = (entry.options.get("dashboard","").strip("/"),entry.options.get("favorites",[]),entry.options.get("appearance","TV"))
-                data = dict(live=True,stamp=now,dashboard=settings[0],favorites=settings[1],appearance=settings[2])
+                settings = (entry.options.get("dashboard","").strip("/"),entry.options.get("favorites",[]),entry.options.get("appearance","TV"),entry.options.get("layout",{}))
+                data = dict(live=True,stamp=now,dashboard=settings[0],favorites=settings[1],appearance=settings[2],layout=settings[3])
                 if before is None:
                     data["rows"] = list(current.values())
                 else:
@@ -127,6 +127,8 @@ class Events(HomeAssistantView):
                     except TimeoutError:
                         await asyncio.wait_for(stream.write(b": alive\n\n"),10)
                         state["last"] = int(time.time())
+                        if any(c.get("event") or c.get("warn") for c in entry.options.get("designer",{}).values()):
+                            break
                 await asyncio.sleep(0.35)
         except (ConnectionError,TimeoutError):
             pass
@@ -154,10 +156,12 @@ class Action(HomeAssistantView):
         data=await body(request)
         entry=authorize(hass,bearer(request),request)
         key,action=data.get("key"),data.get("action")
-        if not isinstance(key,str) or action not in ("turn_on","turn_off"):
+        if not isinstance(key,str) or not isinstance(action,str):
             raise web.HTTPBadRequest()
         row=rows(hass,entry.options).get(key)
-        if not row or not row["controllable"] or not row["available"]:
+        toggle = row and row["controllable"] and row["domain"] in ("light","switch") and action in ("turn_on","turn_off")
+        approved = row and key.startswith("card:") and action in ("turn_on","start","pause","return_to_base") and row.get("operation")==action
+        if not row or not row["available"] or not (approved or toggle):
             raise web.HTTPForbidden()
         await hass.services.async_call(row["domain"],action,{"entity_id":row["eid"]},blocking=True)
         return web.json_response({"ok":True})
