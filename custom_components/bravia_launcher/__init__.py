@@ -27,9 +27,12 @@ async def async_setup_entry(hass, entry):
     async def changed(hass, entry):
         state["wake"].set()
     entry.async_on_unload(entry.add_update_listener(changed))
+    await hass.config_entries.async_forward_entry_setups(entry, ["switch"])
     return True
 
 async def async_unload_entry(hass, entry):
+    if not await hass.config_entries.async_unload_platforms(entry, ["switch"]):
+        return False
     data = hass.data[DOMAIN]
     data["pairing"].codes.pop(entry.entry_id, None)
     data["entries"].pop(entry.entry_id)["wake"].set()

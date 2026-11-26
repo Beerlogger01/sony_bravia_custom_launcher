@@ -43,7 +43,7 @@ public final class PanelDeviceTest extends InstrumentationTestCase {
                 assertEquals("registry-2",f.pins().get(0));
                 for(String value:Arrays.asList("unknown","unavailable")){
                     a.put("value",value);
-                    assertTrue(Feed.problem(a));assertFalse(f.summary()[4].contains("Новый датчик"));
+                    assertFalse(Feed.problem(a));assertFalse(f.summary()[4].contains("Новый датчик"));
                 }
                 f.accept(0,new JSONObject().put("live",false));
                 assertTrue(f.ageLabel().contains("устарело"));

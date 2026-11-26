@@ -20,6 +20,7 @@ def rows(hass, options):
         for device in dr.async_entries_for_area(devices, area):
             selected.update(dict.fromkeys(e.entity_id for e in er.async_entries_for_device(entities, device.id)
                                           if not e.area_id or e.area_id == area))
+    original=set(selected)
     cards=options.get("designer",{})
     for card in cards.values():
         if card.get("visible") and card.get("target"):
@@ -73,4 +74,4 @@ def rows(hass, options):
         else:
             row.update(available=True,domain="link",value="",eid="",dc="",unit="",active=False)
         result[row["key"]]=row
-    return result
+    return {k:r for k,r in result.items() if k.startswith("card:") or r["eid"] in original}

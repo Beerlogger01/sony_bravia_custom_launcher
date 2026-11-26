@@ -11,8 +11,8 @@ android {
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
         minSdk 24
         targetSdk 34
-        versionCode 16
-        versionName '1.2.0-rc2'
+        versionCode 17
+        versionName '1.2.0-rc3'
     }
     sourceSets {
         main.java.srcDir new File(legacy, 'src/main/java')
