@@ -17,7 +17,9 @@
           "pair": "Issue pairing code",
           "revoke": "Revoke access",
           "status": "Connection",
-          "transport": "Local network (HTTP)"
+          "transport": "Local network (HTTP)",
+          "layout": "Home and remote",
+          "designer": "Card designer"
         }
       },
       "cards": {
@@ -51,6 +53,48 @@
           "lan_http": "Local network (HTTP)",
           "tv_ip": "TV IPv4 address"
         }
+      },
+      "layout": {
+        "title": "Home and remote",
+        "data": {
+          "home": "My home",
+          "live": "Show live events",
+          "safety": "Show safety alerts in problems",
+          "hide_lights": "Hide unavailable lights",
+          "red": "Red",
+          "green": "Green",
+          "yellow": "Yellow",
+          "blue": "Blue"
+        }
+      },
+      "designer": {
+        "title": "Card designer",
+        "data": {
+          "card": "Card / add"
+        }
+      },
+      "edit": {
+        "title": "Card",
+        "data": {
+          "template": "Template",
+          "group": "Screen",
+          "operation": "Allowed operation",
+          "link": "Link destination",
+          "title": "Title",
+          "entity": "Entity",
+          "icon": "Icon (symbol)",
+          "active_states": "Active states, comma-separated",
+          "order": "Order / priority",
+          "delay": "Warning delay, seconds",
+          "duration": "Event duration, seconds",
+          "visible": "Visible",
+          "confirm": "Confirm operation",
+          "event": "Live event source",
+          "warn": "Warn if unavailable",
+          "delete": "Delete card",
+          "eta": "Finish time / remaining duration",
+          "event_states": "Live event states, comma-separated"
+        }
       }
     },
     "abort": {
@@ -59,7 +103,9 @@
     },
     "error": {
       "invalid_path": "Enter a path starting with /",
-      "invalid_ip": "Enter a private IPv4 address"
+      "invalid_ip": "Enter a private IPv4 address",
+      "invalid_entity": "Check entity",
+      "invalid_operation": "Invalid operation"
     }
   }
 }

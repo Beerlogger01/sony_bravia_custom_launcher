@@ -2,6 +2,11 @@ param([Parameter(Mandatory=$true)][string]$Backup)
 . (Join-Path $PSScriptRoot 'common.ps1')
 Open-Tv
 $s = Read-State $Backup
+if ($s.stock -eq 'com.google.android.leanbacklauncher/.MainActivity' -and
+    ((Invoke-Tv shell pm list packages -d --user 0) -contains 'package:com.google.android.leanbacklauncher')) {
+    if ((Read-Host 'Stock HOME is disabled. Type ENABLE LEANBACK to restore it for user 0') -cne 'ENABLE LEANBACK') { throw 'Recovery cancelled before changes.' }
+    Invoke-Tv shell pm enable --user 0 com.google.android.leanbacklauncher
+}
 Show-Component $s.stock
 $current = $null
 try { $current = Get-Home } catch { Write-Host 'Restoring the saved explicit HOME choice.' }

@@ -35,7 +35,7 @@ elif cmd.startswith("pull "):
     name=args[1].split("/")[-2].split(".")[-1]
     Path(args[2]).write_bytes(bytes.fromhex(state["files"][name]))
 elif cmd.startswith("shell dumpsys package house.bravia."):
-    print("versionCode="+("13" if args[-1].endswith("home") else "1"))
+    print("versionCode="+("16" if args[-1].endswith("home") else "4"))
 elif cmd.startswith("shell pm path "):
     print("package:/data/app/"+args[-1]+"/base.apk")
 elif cmd.startswith("install "):
@@ -48,16 +48,27 @@ elif cmd=="shell getprop ro.product.manufacturer":print("Sony")
 elif cmd=="shell am get-current-user":print(0)
 elif cmd.startswith("shell cmd package resolve-activity"):print(state["home"])
 elif cmd=="shell settings get secure android_id":print("0000000000000001")
+elif cmd.startswith("shell pm list packages -d"):
+    if state.get("leanback_disabled"): print("package:com.google.android.leanbacklauncher")
+elif cmd=="shell pm enable --user 0 com.google.android.leanbacklauncher":
+    state["leanback_disabled"]=False
 elif cmd.startswith("shell pm list packages house."):
     if args[-1] in state["installed"]: print("package:"+args[-1])
-elif cmd.startswith("shell am start -W -n "):print("Status: ok")
+elif cmd.startswith("shell am start -W -n "):print("Status: "+state.get("launch_status","ok"))
 elif cmd=="shell cmd package help":print("set-home-activity")
 elif cmd.startswith("shell am broadcast "):
     state["enrolled"]=args[-1]=="house.bravia.ENROLL"
     print("Broadcast completed: result=-1")
 elif cmd.startswith("shell cmd package set-home-activity "):
-    if not state["refuse"] or "house." not in args[-1]:state["home"]=args[-1]
-elif cmd=="shell dumpsys activity activities":print("mFocusedActivity "+state["home"])
+    if not state.get("refuse") or "house." not in args[-1]:state["home"]=args[-1]
+elif cmd=="shell dumpsys activity activities":
+    focus=state.get("focus_sequence")
+    if focus:
+        print(focus[0])
+        if len(focus)>1: focus.pop(0)
+    else:
+        print("mFocusedActivity "+state["home"])
+elif cmd=="shell dumpsys window windows":print(state.get("window_focus","mCurrentFocus=null"))
 elif cmd=="shell input keyevent 3":pass
 elif cmd.startswith(("shell settings list ","shell dumpsys ","shell pm list packages","shell getprop")):print("fixture")
 else:raise ValueError(cmd)

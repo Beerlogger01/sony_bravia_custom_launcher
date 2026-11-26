@@ -25,9 +25,16 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     private final ArrayList<String> labels=new ArrayList<>();
     private final HashMap<String,JSONObject> catalog=new HashMap<>();
     private String section="";
+    private String remoteAction;
+    private final ArrayDeque<String> history=new ArrayDeque<>();
+    private final Set<String> pending=new HashSet<>();
     private static final String[] MENU={"Избранное","Климат","Техника","Система","Свет","Датчики","Проблемы",
-        "Каталог · добавить на главную","Открыть Home Assistant","Kiosk · эксперимент","Подключение"};
+        "Каталог · добавить на главную","Открыть Home Assistant","Kiosk · эксперимент","Подключение","Сейчас активно","Сценарии","Недоступные"};
     public void onCreate(Bundle state) {
+        String requested=getIntent().getStringExtra("screen");
+        boolean compact=requested!=null && (requested.startsWith("card:") ||
+            Arrays.asList("Свет","Сейчас активно","Сценарии","Датчики","Техника").contains(requested));
+        if(compact)setTheme(android.R.style.Theme_Material_Dialog_NoActionBar);
         super.onCreate(state);
         feed=Feed.get(this);
         scale=Math.min(getResources().getDisplayMetrics().widthPixels/1200f,getResources().getDisplayMetrics().heightPixels/675f);
@@ -57,10 +64,21 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         list=new ListView(this);configureList(list);list.setDivider(new android.graphics.drawable.ColorDrawable(0xff12161d));list.setDividerHeight(px(7));
         list.setAdapter(adapter);LinearLayout.LayoutParams dataSize=new LinearLayout.LayoutParams(-1,0,1);dataSize.topMargin=px(18);main.addView(list,dataSize);
         list.setOnItemClickListener((p0,v,i,id)->select(i));
-        String requested=getIntent().getStringExtra("screen");
+        if(compact){
+            side.setVisibility(View.GONE);
+            android.util.DisplayMetrics dm=getResources().getDisplayMetrics();
+            getWindow().setLayout(Math.round(dm.widthPixels*.55f),Math.round(dm.heightPixels*.72f));
+            getWindow().setGravity(Gravity.CENTER);
+            WindowManager.LayoutParams lp=getWindow().getAttributes();lp.dimAmount=.45f;getWindow().setAttributes(lp);
+        }
         section=state!=null?state.getString("section",MENU[0]):requested;
-        if(!Arrays.asList(MENU).contains(section))section=MENU[0];
-        navigation.requestFocus();navigation.setSelection(Arrays.asList(MENU).indexOf(section));
+        if(section==null || (!section.startsWith("card:")&&!Arrays.asList(MENU).contains(section)))section=MENU[0];
+        navigation.setSelection(Math.max(0,Arrays.asList(MENU).indexOf(section)));
+        if(requested!=null && !requested.isEmpty())list.requestFocus();else navigation.requestFocus();
+        if("retry".equals(requested))feed.restart();
+        if(state==null && requested!=null && requested.startsWith("card:") && "house.bravia.home".equals(getCallingPackage())
+                && getPackageManager().checkSignatures(getPackageName(),getCallingPackage())==android.content.pm.PackageManager.SIGNATURE_MATCH)
+            remoteAction=requested;
         pendingDashboard=state==null && "dashboard".equals(requested);
     }
     private int px(float n){return Math.round(n*scale);}
@@ -87,7 +105,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     private void bindRow(LinearLayout row,int i){
         String key=keys.get(i);JSONObject r=catalog.get(key);LinearLayout name=(LinearLayout)row.getChildAt(0);
         TextView title=(TextView)name.getChildAt(0),detail=(TextView)name.getChildAt(1),value=(TextView)row.getChildAt(1);
-        title.setText(r==null?labels.get(i):r.optString("title"));
+        title.setSingleLine(false);title.setMaxLines(2);title.setText(r==null?labels.get(i):(r.optString("icon")+" "+r.optString("title")).trim());
         if(r==null){detail.setText(key.isEmpty()?"Выберите раздел или откройте каталог":"Проверьте запись в реестре");value.setText("");return;}
         String area=r.optString("area"),device=r.optString("device");
         String location=area.isEmpty()?device:area+(device.isEmpty()?"":"  ·  "+device);
@@ -96,35 +114,47 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     }
     private void openSection(int i){
         if(i==10){settings();return;}if(i==8||i==9){dashboard(i==9);return;}
-        section=MENU[i];changed();navAdapter.notifyDataSetChanged();list.requestFocus();list.setSelection(0);
+        if(!section.equals(MENU[i]))history.push(section);section=MENU[i];changed();navAdapter.notifyDataSetChanged();list.requestFocus();list.setSelection(0);
     }
     public void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);b.putString("section",section);}
     private int dp(int v){return Math.round(getResources().getDisplayMetrics().density*v);}
-    public void onStart(){super.onStart();feed.add(this);if(pendingDashboard){pendingDashboard=false;list.post(()->dashboard(false));}}
-    public void onStop(){feed.remove(this);super.onStop();}
+    public void onStart(){super.onStart();if(!"В сети".equals(feed.status))remoteAction=null;feed.add(this);if(pendingDashboard){pendingDashboard=false;list.post(()->dashboard(false));}}
+    public void onStop(){remoteAction=null;feed.remove(this);super.onStop();}
     public void changed(){
         status.setText("HOME ASSISTANT    /    "+feed.ageLabel());
-        heading.setText(section.equals(MENU[7])?"Каталог сущностей":section);
+        heading.setText(section.startsWith("card:")?"Карточка":section.equals(MENU[7])?"Каталог сущностей":section);
         int pos=list.getSelectedItemPosition();
         String selected=pos>=0 && pos<keys.size()?keys.get(pos):"";
+        Set<String> designed=new HashSet<>();
         catalog.clear();
         for(int i=0;i<feed.rows.length();i++){
             JSONObject row=feed.rows.optJSONObject(i); catalog.put(row.optString("key"),row);
+            if(row.has("template"))designed.add(row.optString("eid"));
         }
         ArrayList<String> next=new ArrayList<>(), ids=new ArrayList<>();
         {
             List<String> pins=feed.pins();
+            for(String id:orderedKeys())if(id.startsWith("card:") && MENU[0].equals(catalog.get(id).optString("section"))&&!pins.contains(id))pins.add(id);
             Iterable<String> source=section.equals(MENU[0])?pins:orderedKeys();
             for(String key:source){
                 JSONObject r=catalog.get(key);
                 if(r==null){ ids.add(key);next.add("Привязка отсутствует · "+key);continue;}
-                boolean problem=Feed.problem(r);
+                boolean problem=Feed.problem(r) && (!"safety".equals(r.optString("health")) || feed.layout.optBoolean("safety",true));
+                if(section.startsWith("card:") && !section.equals(key))continue;
+                if(!key.startsWith("card:") && !section.equals(MENU[7]) && !section.equals(MENU[0]) && designed.contains(r.optString("eid")))continue;
+                if(section.equals("Сейчас активно") && !r.optBoolean("active"))continue;
+                if(section.equals("Недоступные") && !"unavailable".equals(r.optString("value")))continue;
+                if(section.equals("Свет") && feed.layout.optBoolean("hide_lights") && !r.optBoolean("available"))continue;
                 if(section.equals(MENU[6]) && !problem)continue;
-                if(!(section.equals(MENU[7])||section.equals(MENU[0])||section.equals(MENU[6]))
-                    && (!section.equals(feed.prefs.getString("section."+key,r.optString("section")))||problem))continue;
+                if(!(section.startsWith("card:")||section.equals("Сейчас активно")||section.equals("Недоступные")||section.equals(MENU[7])||section.equals(MENU[0])||section.equals(MENU[6]))
+                    && (!section.equals(feed.prefs.getString("section."+key,r.optString("section")))))continue;
                 ids.add(key);next.add((feed.prefs.getStringSet("new",Collections.emptySet()).contains(key)?"Новое   ":"")+(pins.contains(key)?"★   ":"")+r.optString("title")+"     "+Feed.reading(r)
                     +"     "+r.optString("area")+(section.equals(MENU[7])?"   ·   "+r.optString("device"):""));
             }
+        }
+        if(remoteAction!=null && "В сети".equals(feed.status)){
+            String action=remoteAction;remoteAction=null;
+            list.post(()->{int i=keys.indexOf(action);if(i>=0 && !isFinishing() && !isDestroyed())select(i);});
         }
         int fresh=feed.prefs.getStringSet("new",Collections.emptySet()).size();
         count.setText("Карточек  ·  "+next.size()+(section.equals(MENU[7])?"     Новых  ·  "+fresh:""));
@@ -151,8 +181,10 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         java.text.Collator collator=java.text.Collator.getInstance();
         result.sort((a,b)->{
             JSONObject left=catalog.get(a),right=catalog.get(b);
+            int order=Integer.compare(left.optInt("order",100000),right.optInt("order",100000));
+            if(order!=0)return order;
             for(String field:new String[]{"area","device","title"}){
-                int order=collator.compare(left.optString(field),right.optString(field));
+                order=collator.compare(left.optString(field),right.optString(field));
                 if(order!=0)return order;
             }
             return a.compareTo(b);
@@ -165,6 +197,20 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         ArrayList<String> pins=feed.pins(); int index=pins.indexOf(key);
         String[] choices=index<0?new String[]{"Закрепить"}:new String[]{"Открепить","Переместить выше","Переместить ниже"};
         JSONObject row=catalog.get(key);
+        if(row!=null && ("link".equals(row.optString("template"))||"active".equals(row.optString("template")))){
+            navigate("active".equals(row.optString("template"))?"Сейчас активно":row.optString("link"));return;
+        }
+        if(row!=null && !row.optString("operation").isEmpty() && !"toggle".equals(row.optString("operation"))){
+            Runnable send=()->command(row,row.optString("operation"));
+            if(row.optBoolean("confirm",true))new AlertDialog.Builder(this).setMessage(row.optString("title")+"?")
+                .setNegativeButton("Назад",null).setPositiveButton("Выполнить",(d,n)->send.run()).show();
+            else send.run();
+            return;
+        }
+        if(row!=null && "light".equals(row.optString("domain")) && (section.equals("Свет")||"toggle".equals(row.optString("operation")))){
+            if(!row.optBoolean("controllable")){toast("Только просмотр");return;}
+            command(row,"on".equals(row.optString("value"))?"turn_off":"turn_on");return;
+        }
         ArrayList<String> actions=new ArrayList<>(Arrays.asList(choices));
         if(row!=null && Arrays.asList("temperature","humidity","illuminance").contains(row.optString("dc"))) actions.add("История за 24 часа");
         if(row!=null)actions.add("Выбрать раздел");
@@ -172,10 +218,10 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         if(row!=null && row.optBoolean("controllable") && "В сети".equals(feed.status))actions.add(toggle);
         new AlertDialog.Builder(this).setTitle(row==null?key:row.optString("eid")).setItems(actions.toArray(new String[0]),(d,n)->{
             if(actions.get(n).equals(toggle)){
-                String endpoint=feed.prefs.getString("bridge",""), sealed=feed.prefs.getString("secret","");
-                new Thread(()->{try{
-                    TvApi.post(endpoint,"action",new JSONObject().put("key",key).put("action",toggle.equals("Выключить")?"turn_off":"turn_on"),Vault.open(sealed));
-                }catch(Exception ex){runOnUiThread(()->toast("Команда не подтверждена. Проверьте разрешение в HA"));}},"bravia-action").start();
+                Runnable send=()->command(row,toggle.equals("Выключить")?"turn_off":"turn_on");
+                if("switch".equals(row.optString("domain")))new AlertDialog.Builder(this).setMessage(toggle+" "+row.optString("title")+"?")
+                    .setNegativeButton("Назад",null).setPositiveButton("Выполнить",(x,y)->send.run()).show();
+                else send.run();
                 return;
             }
             if(actions.get(n).equals("История за 24 часа")){
@@ -190,6 +236,33 @@ public final class PanelActivity extends Activity implements Feed.Listener {
             else Collections.swap(pins,index,Math.min(pins.size()-1,Math.max(0,index+(n==1?-1:1))));
             feed.savePins(pins);
         }).show();
+    }
+    private void command(JSONObject row,String action){
+        String key=row.optString("key");
+        if(!row.optBoolean("available") || !"В сети".equals(feed.status)){toast("Устройство недоступно");return;}
+        if(!pending.add(key))return;
+        String endpoint=feed.prefs.getString("bridge",""), sealed=feed.prefs.getString("secret","");
+        new Thread(()->{
+            try{TvApi.post(endpoint,"action",new JSONObject().put("key",key).put("action",action),Vault.open(sealed));}
+            catch(Exception ex){runOnUiThread(()->toast("Команда не подтверждена"));}
+            finally{runOnUiThread(()->pending.remove(key));}
+        },"bravia-action").start();
+    }
+    private void navigate(String dest){
+        if(dest.matches("HDMI [1-4]")){
+            setResult(RESULT_OK,new Intent().putExtra("port",dest.charAt(5)-'0'));finish();return;
+        }
+        if("dashboard".equals(dest)){dashboard(false);return;}
+        if(!dest.startsWith("card:")&&!Arrays.asList(MENU).contains(dest))return;
+        history.push(section);section=dest;changed();list.requestFocus();list.setSelection(0);
+    }
+    public boolean dispatchKeyEvent(KeyEvent e){
+        int i=e.getKeyCode()-KeyEvent.KEYCODE_PROG_RED;
+        if(i>=0 && i<4){
+            String dest=feed.layout.optString(new String[]{"red","green","yellow","blue"}[i],"—");
+            if(!dest.equals("—")){if(e.getAction()==KeyEvent.ACTION_DOWN && e.getRepeatCount()==0){if(dest.startsWith("card:") && "В сети".equals(feed.status))remoteAction=dest;navigate(dest);}return true;}
+        }
+        return super.dispatchKeyEvent(e);
     }
     private EditText field(LinearLayout box,String label,String value,boolean password){
         TextView title=new TextView(this);title.setText(label);box.addView(title);
@@ -287,5 +360,5 @@ public final class PanelActivity extends Activity implements Feed.Listener {
                 catch(ActivityNotFoundException e){toast("Браузер не установлен");}})
             .setNegativeButton("Назад",null).show();
     }
-    public void onBackPressed(){if(list.hasFocus())navigation.requestFocus();else super.onBackPressed();}
+    public void onBackPressed(){if(!history.isEmpty()){section=history.pop();changed();navAdapter.notifyDataSetChanged();list.requestFocus();}else super.onBackPressed();}
 }

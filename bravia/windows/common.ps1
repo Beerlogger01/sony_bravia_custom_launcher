@@ -39,9 +39,9 @@ function Get-Identity {
     if ($id -notmatch '^[a-fA-F0-9]{8,16}$') { throw 'Cannot identify this TV.' }
     $id
 }
-function Save-State {
+function Save-State([switch]$Updating) {
     $homeComponent = Get-Home
-    if ($homeComponent -match '^house\.bravia\.') { throw 'Expected original HOME. Keep the original backup.' }
+    if (!$Updating -and $homeComponent -match '^house\.bravia\.') { throw 'Expected original HOME. Keep the original backup.' }
     $dir = Join-Path $env:LOCALAPPDATA ('BraviaHome\'+(Get-Date -Format yyyyMMdd-HHmmss-fff))
     $null = New-Item -ItemType Directory -Path $dir
     Invoke-Tv shell getprop | Out-File "$dir\getprop.txt" -Encoding utf8
@@ -50,11 +50,19 @@ function Save-State {
     Invoke-Tv shell pm list packages -f | Out-File "$dir\packages.txt" -Encoding utf8
     Invoke-Tv shell dumpsys tv_input | Out-File "$dir\inputs.txt" -Encoding utf8
     Invoke-Tv shell dumpsys package preferred-activities | Out-File "$dir\preferred.txt" -Encoding utf8
-    [pscustomobject]@{ stock=$homeComponent; identity=(Get-Identity); firmware=((Invoke-Tv shell getprop ro.build.fingerprint) -join '') } |
+    $stock = $homeComponent
+    if ($homeComponent -eq $AliasHome) { $stock = 'com.google.android.leanbacklauncher/.MainActivity' }
+    if ($Updating) {
+        foreach ($pkg in 'com.google.android.leanbacklauncher','house.bravia.home','house.bravia.panel','com.sony.dtv.tvx','com.sony.dtv.webapi.core','com.android.systemui') {
+            Invoke-Tv shell dumpsys package $pkg | Out-File "$dir\$pkg.txt" -Encoding utf8
+        }
+    }
+    [pscustomobject]@{ stock=$stock; original=$homeComponent; identity=(Get-Identity); firmware=((Invoke-Tv shell getprop ro.build.fingerprint) -join '') } |
         ConvertTo-Json | Out-File "$dir\home.json" -Encoding utf8
     Write-Host "Backup: $dir"
     Write-Host "Restore: .\restore.ps1 -Backup '$dir'"
-    Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$homeComponent'"
+    if ($homeComponent -eq $AliasHome) { Write-Host 'If stock Leanback is disabled, restore.ps1 will ask before enabling it.' }
+    Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$stock'"
     $dir
 }
 function Read-State([string]$dir) {
@@ -65,7 +73,39 @@ function Read-State([string]$dir) {
 }
 function Show-Component([string]$component) {
     $result = (Invoke-Tv shell am start -W -n $component) -join "`n"
-    if ($result -notmatch '(?m)^Status:\s*ok') { throw "Launch failed: $component" }
+    if ($result -match '(?m)^Status:[ \t]*ok[ \t]*\r?$') { return }
+    if ($result -notmatch '(?m)^Status:[ \t]*timeout[ \t]*\r?$') { throw "Launch failed: $component" }
+
+    # ActivityManager on API 24 can time out waiting for the first draw.
+    # Verify the focused user-0 ActivityRecord. Task history can contain stopped instances.
+    $pkg, $class = $component -split '/', 2
+    if ($class.StartsWith('.')) { $class = $pkg + $class }
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        if ($attempt -gt 0) { Start-Sleep -Milliseconds 500 }
+        $focused = @(Invoke-Tv shell dumpsys activity activities |
+            Where-Object { $_ -cmatch '^\s*mFocusedActivity\s*[:=]' })
+        if ($focused.Count -gt 0) {
+            if ($focused.Count -ne 1 -or
+                $focused[0] -cnotmatch '^\s*mFocusedActivity\s*[:=]\s*ActivityRecord\{\S+\s+u0\s+([^/\s]+)/([^\s}]+)(?=[\s}])') { continue }
+        } else {
+            # Some vendor dumps omit the ActivityManager focus field.
+            $windows = @(Invoke-Tv shell dumpsys window windows | Where-Object { $_ -cmatch '^\s*mCurrentFocus\s*=' })
+            if ($windows.Count -ne 1 -or
+                $windows[0] -cnotmatch '^\s*mCurrentFocus\s*=\s*Window\{\S+\s+u0\s+([^/\s]+)/([^\s}]+)(?=[\s}])') { continue }
+        }
+        $actualPkg, $actualClass = $Matches[1], $Matches[2]
+        if ($actualClass.StartsWith('.')) { $actualClass = $actualPkg + $actualClass }
+        # HomeChoice is the manifest alias of the exact preview Activity, including when
+        # am start delivers its intent to a task originally launched through HOME.
+        if ($component -ceq $Preview -and "$actualPkg/$actualClass" -ceq $AliasHome) {
+            $actualClass = $class
+        }
+        if ($actualPkg -ceq $pkg -and $actualClass -ceq $class) {
+            Write-Host "Activity confirmed in foreground after timeout: $component"
+            return
+        }
+    }
+    throw "Launch timed out; user 0 foreground did not confirm $component."
 }
 
 function Get-LocalApkDigest([string]$Path) {

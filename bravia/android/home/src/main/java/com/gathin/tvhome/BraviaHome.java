@@ -33,8 +33,16 @@ public final class BraviaHome extends Activity {
     };
     private float scale;
     private boolean bound;
+    private org.json.JSONObject layout=new org.json.JSONObject();
+    private TextView event;
+    private String endpoint="";
+    private long lastData;
     private final Messenger receiver=new Messenger(new Handler(Looper.getMainLooper(),msg->{
         Bundle b=msg.getData();
+        try{layout=new org.json.JSONObject(b.getString("layout","{}"));}catch(org.json.JSONException ignored){}
+        endpoint=b.getString("endpoint","");lastData=b.getLong("stamp");
+        String liveEvent=b.getString("event","");
+        set(event,liveEvent);event.setVisibility(liveEvent.isEmpty()?View.GONE:View.VISIBLE);
         String remoteTheme=b.getString("theme","TV");
         int desired=Arrays.asList(THEMES).indexOf(remoteTheme);
         if(bound && desired>=0 && !remoteTheme.equals(getPreferences(0).getString("haTheme","TV"))){
@@ -68,7 +76,7 @@ public final class BraviaHome extends Activity {
         set(metrics[0],v[1]);set(metrics[1],v[2].trim());set(metrics[2],v[5].isEmpty()?"—":v[5]);
         set(metrics[3],v[3]);set(registry,fresh>0?"Каталог   +"+fresh:"Каталог");
     }
-    private void offline(){render(new String[]{"Нет связи","—","—","—","",""},null,0);}
+    private void offline(){if(event!=null)event.setVisibility(View.GONE);render(new String[]{"Нет связи","—","—","—","",""},null,0);}
     private int u(float v){return Math.round(v*scale);}
     private TextView text(String label,int size,int color,boolean medium){
         TextView t=new TextView(this);t.setText(label);t.setTextColor(color);t.setTextSize(TypedValue.COMPLEX_UNIT_PX,u(size));
@@ -101,13 +109,52 @@ public final class BraviaHome extends Activity {
     private ImageView icon(int res,int tint){ImageView i=new ImageView(this);i.setImageResource(res);i.setColorFilter(tint);i.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return i;}
     private void addIcon(LinearLayout parent,int res,int color,int size){parent.addView(icon(res,color),u(size),u(size));}
     private void panel(String destination){
-        open(new Intent().setClassName(PANEL,"house.panel.PanelActivity").putExtra("screen",destination));
+        try{startActivityForResult(new Intent().setClassName(PANEL,"house.panel.PanelActivity").putExtra("screen",destination),42);}
+        catch(ActivityNotFoundException e){Toast.makeText(this,"Панель недоступна",Toast.LENGTH_SHORT).show();}
+    }
+    protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request==42 && result==RESULT_OK && data!=null){int port=data.getIntExtra("port",0);if(port>=1 && port<=4)switchPort(port);}
+    }
+    public boolean dispatchKeyEvent(KeyEvent e){
+        int i=e.getKeyCode()-KeyEvent.KEYCODE_PROG_RED;
+        if(i>=0 && i<4){
+            String dest=layout.optString(new String[]{"red","green","yellow","blue"}[i],"—");
+            if(!dest.equals("—")){if(e.getAction()==KeyEvent.ACTION_DOWN && e.getRepeatCount()==0)panel(dest);return true;}
+        }
+        return super.dispatchKeyEvent(e);
     }
     private void network(){
         NetworkInfo n=((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
-        set(network,n==null||!n.isConnected()?"Без сети":n.getType()==ConnectivityManager.TYPE_WIFI?"Wi-Fi":n.getTypeName());
+        String label=n==null||!n.isConnected()?"Без сети":n.getTypeName();
+        if(n!=null && n.isConnected() && n.getType()==ConnectivityManager.TYPE_WIFI){
+            int rssi=rssi();label="◔ Wi-Fi "+(rssi>-127?android.net.wifi.WifiManager.calculateSignalLevel(rssi,5)+"/4":"");
+        }
+        set(network,label);
         java.text.DateFormat format=new java.text.SimpleDateFormat("EEEE, d MMMM",new Locale("ru"));
         set(date,format.format(new Date()));
+    }
+    private int rssi(){
+        try{android.net.wifi.WifiManager w=(android.net.wifi.WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+            return w.getConnectionInfo().getRssi();}catch(RuntimeException ex){return -127;}
+    }
+    private void diagnostics(){
+        ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+        LinkProperties link=cm.getLinkProperties(cm.getActiveNetwork());
+        String address=link==null?"—":link.getLinkAddresses().toString();
+        String detail=network.getText()+" · "+address;
+        if(network.getText().toString().contains("Wi-Fi") && rssi()>-127)detail+=" · "+rssi()+" dBm";
+        detail+="\nЛокальный интерфейс: "+(link!=null?"подключён":"нет маршрута")+"\nАвторизация: "+(status.getText().toString().contains("HA в сети")?"подтверждена":status.getText().toString().contains("отклонён")?"доступ отклонён":"не подтверждена")+"\nHA: "+endpoint+"\nSSE: "+status.getText()+"\nПоследние данные: "+(lastData>0?new java.util.Date(lastData*1000):"—");
+        new AlertDialog.Builder(this).setTitle("Диагностика сети").setMessage(detail).setNegativeButton("Назад",null)
+            .setPositiveButton("Повторить соединение",(d,n)->panel("retry")).setNeutralButton("Пульт",(d,n)->keyMonitor()).show();
+    }
+    private void keyMonitor(){
+        AlertDialog dlg=new AlertDialog.Builder(this).setTitle("Диагностика пульта").setMessage("Нажмите цветную кнопку").setNegativeButton("Назад",null).create();
+        dlg.setOnKeyListener((dialog,code,e)->{
+            if(code==KeyEvent.KEYCODE_BACK)return false;
+            dlg.setMessage(KeyEvent.keyCodeToString(code)+" ("+code+") · action "+e.getAction()+" · repeat "+e.getRepeatCount()+" · source "+e.getSource());
+            return code>=KeyEvent.KEYCODE_PROG_RED && code<=KeyEvent.KEYCODE_PROG_BLUE;
+        });dlg.show();
     }
     private final BroadcastReceiver systemChange=new BroadcastReceiver(){public void onReceive(Context c,Intent i){network();}};
     private void masthead(){
@@ -116,7 +163,7 @@ public final class BraviaHome extends Activity {
         mark.addView(icon(R.drawable.lh_house_plug,INK));r.addView(mark,u(38),u(38));gap(r,12);
         TextView brand=text(getString(R.string.house_name),24,WHITE,true);brand.setLetterSpacing(.10f);grow(r,brand,1);
         date=text("",18,MUTED,false);r.addView(date);gap(r,24);
-        network=text("",15,MUTED,false);r.addView(network);gap(r,16);
+        network=text("",15,MUTED,false);pad(network,8,4);styleAction(network,this::diagnostics);r.addView(network);gap(r,16);
         status=text("",16,GREEN,true);pad(status,13,4);status.setBackground(box(surface,18));r.addView(status);gap(r,18);
         TextClock clock=new TextClock(this);clock.setFormat12Hour("HH:mm");clock.setFormat24Hour("HH:mm");
         clock.setTextColor(WHITE);clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,u(29));r.addView(clock);gap(r,14);
@@ -139,12 +186,12 @@ public final class BraviaHome extends Activity {
         }
         ImageView arrow=icon(R.drawable.lh_arrow_up_right,WHITE);
         FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(u(25),u(25),Gravity.TOP|Gravity.RIGHT);p.setMargins(0,u(20),u(20),0);frame.addView(arrow,p);
-        styleAction(frame,()->panel(""));return frame;
+        styleAction(frame,()->panel(layout.optString("home","Избранное")));return frame;
     }
     private void metric(LinearLayout row,int index,String label,int res,int accent,String section){
         LinearLayout card=column();card.setGravity(Gravity.CENTER_VERTICAL);pad(card,17,8);card.setBackground(box(surface,14));
         LinearLayout header=line();card.addView(header,-1,u(25));addIcon(header,res,accent,22);gap(header,8);header.addView(text(label,16,MUTED,false));
-        gap(card,4);metrics[index]=text("—",index==2?19:27,WHITE,true);card.addView(metrics[index]);styleAction(card,()->panel(section));card.setOnLongClickListener(v->{widgetMenu(index,label);return true;});grow(row,card,1);
+        gap(card,4);metrics[index]=text("—",index==2?19:27,WHITE,true);card.addView(metrics[index]);styleAction(card,()->panel(section));grow(row,card,1);
     }
     private void overview(){
         LinearLayout row=line();page.addView(row,-1,u(177));FrameLayout feature=hero();grow(row,feature,1.36f);
@@ -152,7 +199,7 @@ public final class BraviaHome extends Activity {
         for(char digit:order.toCharArray()){int id=digit-'0';if(!getPreferences(0).getBoolean("hideWidget"+id,false))visible.add(id);}
         if(!visible.isEmpty()){
             gap(row,12);LinearLayout grid=column();grow(row,grid,1);
-            String[] titles={"Свет","Пылесос","Активно","Проблемы"},sections={"Свет","Техника","Техника","Проблемы"};
+            String[] titles={"Свет","Пылесос","Активно","Проблемы"},sections={"Свет","Техника","Сейчас активно","Проблемы"};
             int[] icons={R.drawable.lh_lamp_floor,R.drawable.lh_disc_3,R.drawable.lh_activity,R.drawable.lh_circle_alert};
             int[] colors={GOLD,LILAC,GREEN,GOLD};
             LinearLayout pair=null;
@@ -180,7 +227,7 @@ public final class BraviaHome extends Activity {
         if(appRail.getChildCount()>0)gap(appRail,10);
         LinearLayout card=column();card.setGravity(Gravity.CENTER_VERTICAL);pad(card,15,10);card.setBackground(box(back,14));
         addIcon(card,image,color,34);gap(card,9);card.addView(text(label,18,WHITE,true));styleAction(card,action);
-        card.setTag(slot);card.setOnLongClickListener(v->{editAppTile(slot);return true;});grow(appRail,card,1);
+        card.setTag(slot);grow(appRail,card,1);
     }
     private String favorite(String slot,String fallback){return getPreferences(0).getString(slot,fallback);}
     private void appSlot(String slot,String fallback,String name,int img,int tint,int bg){
@@ -253,12 +300,12 @@ public final class BraviaHome extends Activity {
         page.addView(text("Источники",22,WHITE,true));gap(page,5);
         portRail=line();page.addView(portRail,-1,u(55));refreshPorts(0);gap(page,12);
         LinearLayout appsTitle=line();page.addView(appsTitle,-1,u(28));grow(appsTitle,text("Приложения",22,WHITE,true),1);
-        appsTitle.addView(text("Избранные приложения  ·  удерживайте OK для замены",14,MUTED,false));gap(page,6);
+        appsTitle.addView(text("Избранные приложения",14,MUTED,false));gap(page,6);
         appRail=line();page.addView(appRail,-1,u(85));refreshApps();gap(page,13);
         LinearLayout controls=line();page.addView(controls,-1,u(48));
         control(controls,getString(R.string.house_dashboard),R.drawable.lh_panels_top_left,()->panel("dashboard"));
-        registry=control(controls,"Каталог",R.drawable.lh_notebook_tabs,()->panel("Каталог · добавить на главную"));
-        control(controls,"Мои карточки",R.drawable.lh_sliders_horizontal,()->panel("Избранное"));
+        event=text("",17,accent,true);grow(controls,event,1);event.setVisibility(View.GONE);
+
         control(controls,"Вид экрана",R.drawable.lh_settings,this::appearance);
         offline();network();
     }
@@ -309,7 +356,7 @@ public final class BraviaHome extends Activity {
             LinearLayout tile=line();pad(tile,13,0);tile.setBackground(box(surface,14));addIcon(tile,R.drawable.lh_hdmi,accent,27);gap(tile,10);
             String alias=getPreferences(0).getString("name"+port,"");
             tile.addView(text("HDMI "+port+(alias.isEmpty()?"":"  ·  "+alias),18,WHITE,true));
-            styleAction(tile,()->switchPort(port));tile.setOnLongClickListener(v->{editPort(port);return true;});grow(portRail,tile,1);
+            styleAction(tile,()->switchPort(port));grow(portRail,tile,1);
             if(focused==port)tile.requestFocus();
         }
         if(portRail.getChildCount()==0)control(portRail,"Показать входы",R.drawable.lh_hdmi,this::restorePorts);
@@ -339,11 +386,15 @@ public final class BraviaHome extends Activity {
         }).show();
     }
     private void appearance(){
-        String[] options={"Акцентный цвет","Пейзаж / градиент","Показать скрытые HDMI","Карточки Home Assistant","Настроить видеоприложение","Настроить музыку","Вернуть скрытые виджеты","Тема оформления","Вернуть скрытые приложения"};
+        String[] options={"Акцентный цвет","Пейзаж / градиент","Показать скрытые HDMI","Карточки Home Assistant","Настроить видеоприложение","Настроить музыку","Вернуть скрытые виджеты","Тема оформления","Вернуть скрытые приложения","Настроить HDMI","Настроить приложения","Настроить сводки","Каталог сущностей"};
         new AlertDialog.Builder(this).setTitle("Вид экрана").setItems(options,(d,n)->{
             if(n==0)new AlertDialog.Builder(this).setTitle("Цвет фокуса").setItems(new String[]{"Янтарь","Мята","Лаванда"},(dialog,i)->{
                 getPreferences(0).edit().putInt("accent",new int[]{GOLD,GREEN,LILAC}[i]).apply();recreate();
             }).show();
+            if(n==9)new AlertDialog.Builder(this).setTitle("HDMI").setItems(new String[]{"HDMI 1","HDMI 2","HDMI 3","HDMI 4"},(a,i)->editPort(i+1)).show();
+            if(n==10)new AlertDialog.Builder(this).setTitle("Приложения").setItems(new String[]{"Видео","Музыка","ТВ","Screen Mirroring","Все приложения"},(a,i)->editAppTile(new String[]{"video","music","tv","cast","all"}[i])).show();
+            if(n==11){String[] names={"Свет","Пылесос","Активно","Проблемы"};new AlertDialog.Builder(this).setTitle("Сводки").setItems(names,(a,i)->widgetMenu(i,names[i])).show();}
+            if(n==12)panel("Каталог · добавить на главную");
             if(n==8){SharedPreferences.Editor e=getPreferences(0).edit();for(String slot:new String[]{"video","music","tv","cast","all"})e.remove("hideApp."+slot);e.apply();refreshApps();}
             if(n==7)new AlertDialog.Builder(this).setTitle("Тема оформления").setSingleChoiceItems(THEMES,theme,(a,i)->{getPreferences(0).edit().putInt("theme",i).remove("accent").apply();a.dismiss();recreate();}).show();
             if(n==1){getPreferences(0).edit().putBoolean("landscape",!getPreferences(0).getBoolean("landscape",true)).apply();recreate();}
@@ -365,7 +416,7 @@ public final class BraviaHome extends Activity {
     }
     public void onStart(){super.onStart();
         IntentFilter changes=new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-        changes.addAction(Intent.ACTION_DATE_CHANGED);changes.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+        changes.addAction(android.net.wifi.WifiManager.RSSI_CHANGED_ACTION);changes.addAction(Intent.ACTION_DATE_CHANGED);changes.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         registerReceiver(systemChange,changes);network();
         if(getPackageManager().checkSignatures(getPackageName(),PANEL)==PackageManager.SIGNATURE_MATCH){
             try{bound=bindService(new Intent().setClassName(PANEL,"house.panel.Summary"),connection,BIND_AUTO_CREATE);}

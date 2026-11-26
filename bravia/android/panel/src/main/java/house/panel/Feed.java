@@ -19,6 +19,7 @@ final class Feed {
     final SharedPreferences prefs;
     JSONArray rows = new JSONArray();
     String status = "Нет связи", dashboard = "";
+    JSONObject layout=new JSONObject();
     long stamp;
     final Set<Listener> listeners = new HashSet<>();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -35,6 +36,7 @@ final class Feed {
     private Feed(Context c) {
         prefs = c.getSharedPreferences("panel",0);
         try { rows = new JSONArray(prefs.getString("rows","[]")); } catch (JSONException ignored) {}
+        try {layout=new JSONObject(prefs.getString("layout","{}"));}catch(JSONException ignored){}
         stamp = prefs.getLong("stamp",0);
         dashboard = prefs.getString("path","");
     }
@@ -97,7 +99,9 @@ final class Feed {
                     }
                 }
             } catch(javax.net.ssl.SSLHandshakeException e) { failure="Проверьте сертификат TLS"; }
-            catch(Exception e) { /* Never log credentials or household states. */ }
+            catch(java.net.ConnectException e){failure="HA не отвечает";}
+            catch(java.net.SocketTimeoutException e){failure="Таймаут HA";}
+            catch(Exception e){failure="Поток SSE прерван";}
             finally { if(c!=null)c.disconnect(); if(active==c)active=null; }
             status(id,failure);
             try { Thread.sleep(delay); } catch(InterruptedException e){ return; }
@@ -129,6 +133,10 @@ final class Feed {
             }
             String appearance=data.optString("appearance","TV");
             if(!appearance.equals(prefs.getString("appearance","TV")))prefs.edit().putString("appearance",appearance).apply();
+            JSONObject options=data.optJSONObject("layout");
+            if(options==null)options=new JSONObject();
+            if(!options.toString().equals(layout.toString()))prefs.edit().putString("layout",options.toString()).apply();
+            layout=options;
             JSONArray remote=data.optJSONArray("favorites");
             if(remote!=null && !remote.toString().equals(prefs.getString("remotePins","[]"))){
                 prefs.edit().putString("remotePins",remote.toString()).putString("pins",remote.toString()).apply();
@@ -160,7 +168,8 @@ final class Feed {
         return status+(stamp>0?" · устарело "+new java.text.SimpleDateFormat("dd.MM HH:mm",Locale.getDefault()).format(new Date(stamp*1000)):"");
     }
     static boolean problem(JSONObject r) {
-        return Arrays.asList("unavailable","unknown","error").contains(r.optString("value"))
+        if(r.has("health"))return Arrays.asList("warning","fault","safety").contains(r.optString("health"));
+        return "error".equals(r.optString("value"))
             || (Arrays.asList("problem","smoke","gas","safety","tamper","battery","door","window","opening","garage_door","moisture").contains(r.optString("dc")) && "on".equals(r.optString("value")))
             || ("connectivity".equals(r.optString("dc")) && "off".equals(r.optString("value")));
     }
@@ -189,29 +198,43 @@ final class Feed {
         for(int i=0;i<rows.length();i++){ JSONObject r=rows.optJSONObject(i); byKey.put(r.optString("key"),r); }
         for(String key:pins()){
             JSONObject r=byKey.get(key);
-            if(r==null || problem(r))continue;
+            if(r==null || problem(r) || Arrays.asList("unknown","unavailable").contains(r.optString("value")))continue;
             result.add(r.optString("title")); result.add(reading(r).trim());
             if(result.size()==6)break;
         }
         return result.toArray(new String[0]);
     }
+    String event(){
+        if(!layout.optBoolean("live") || !"В сети".equals(status))return "";
+        JSONObject best=null;
+        for(int i=0;i<rows.length();i++){
+            JSONObject row=rows.optJSONObject(i);
+            if(row.optBoolean("event") && (best==null || row.optInt("order")<best.optInt("order")))best=row;
+        }
+        return best==null?"":best.optString("title")+"  ·  "+reading(best).trim()+(best.optString("eta").isEmpty()?"":" · "+best.optString("eta"));
+    }
     String[] summary() {
-        int lights=0,issues=0; String robot="—"; ArrayList<String> active=new ArrayList<>();
+        Set<String> lit=new HashSet<>(),problems=new HashSet<>(); String robot="—"; ArrayList<String> active=new ArrayList<>();
         Map<String,JSONObject> byKey=new HashMap<>();
-        for(int i=0;i<rows.length();i++) {
-            JSONObject r=rows.optJSONObject(i);
+        Map<String,JSONObject> devices=new LinkedHashMap<>();
+        for(int i=0;i<rows.length();i++){
+            JSONObject row=rows.optJSONObject(i);byKey.put(row.optString("key"),row);
+            String eid=row.optString("eid",row.optString("key"));
+            if(!devices.containsKey(eid) || row.has("template") && !devices.get(eid).has("template"))devices.put(eid,row);
+        }
+        for(JSONObject r:devices.values()) {
             byKey.put(r.optString("key"),r);
-            if(problem(r)) issues++;
-            if("light".equals(r.optString("domain")) && "on".equals(r.optString("value"))) lights++;
+            if(problem(r) && (!"safety".equals(r.optString("health")) || layout.optBoolean("safety",true))) problems.add(r.optString("eid"));
+            if("light".equals(r.optString("domain")) && "on".equals(r.optString("value"))) lit.add(r.optString("eid"));
             if("vacuum".equals(r.optString("domain"))) robot=reading(r);
-            if("Техника".equals(r.optString("section")) && Arrays.asList("on","running","cleaning","playing").contains(r.optString("value")) && active.size()<2) active.add(r.optString("title"));
+            if(r.optBoolean("active") && active.size()<2) active.add(r.optString("title"));
         }
         List<String> favorites=new ArrayList<>();
         for(String key:pins()) {
             JSONObject r=byKey.get(key);
-            if(r!=null && !problem(r) && favorites.size()<3) favorites.add(r.optString("title")+"  "+reading(r));
+            if(r!=null && !problem(r) && !Arrays.asList("unknown","unavailable").contains(r.optString("value")) && favorites.size()<3) favorites.add(r.optString("title")+"  "+reading(r));
         }
-        return new String[]{ageLabel(), stamp==0?"—":String.valueOf(lights),robot,stamp==0?"—":String.valueOf(issues),
+        return new String[]{ageLabel(), stamp==0?"—":String.valueOf(lit.size()),robot,!"В сети".equals(status)?"—":String.valueOf(problems.size()),
             android.text.TextUtils.join("     ·     ",favorites),android.text.TextUtils.join(" · ",active)};
     }
 }

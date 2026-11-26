@@ -11,7 +11,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView, KEY_HASS
 from .const import DOMAIN, PREFIX
 from .credentials import digest
-from .projection import rows
+from .projection import resolve, rows
 
 from .transport import allowed
 
@@ -92,6 +92,9 @@ class Events(HomeAssistantView):
                 current = rows(hass, entry.options)
                 state["last"] = now
                 state["watch"] = {row["eid"] for row in current.values()}
+                if entry.options.get("layout",{}).get("live"):
+                    state["watch"].update(resolve(hass,c["eta_key"]) for c in entry.options.get("designer",{}).values()
+                                          if c.get("eta_key") and c.get("event") and c.get("visible"))
                 points = state.setdefault("history",{})
                 for key in list(points):
                     if key not in current:
@@ -110,8 +113,8 @@ class Events(HomeAssistantView):
                         samples.clear()
                     if not samples or now//300 != samples[-1][0]//300:
                         samples.append((now,value,row["unit"]))
-                settings = (entry.options.get("dashboard","").strip("/"),entry.options.get("favorites",[]),entry.options.get("appearance","TV"))
-                data = dict(live=True,stamp=now,dashboard=settings[0],favorites=settings[1],appearance=settings[2])
+                settings = (entry.options.get("dashboard","").strip("/"),entry.options.get("favorites",[]),entry.options.get("appearance","TV"),entry.options.get("layout",{}))
+                data = dict(live=True,stamp=now,dashboard=settings[0],favorites=settings[1],appearance=settings[2],layout=settings[3])
                 if before is None:
                     data["rows"] = list(current.values())
                 else:
@@ -121,9 +124,10 @@ class Events(HomeAssistantView):
                 payload = "data: "+json.dumps(data,ensure_ascii=False,separators=(",",":"))+"\n\n" if changed else ": alive\n\n"
                 await asyncio.wait_for(stream.write(payload.encode()),10)
                 before, previous_settings = current, settings
-                while not state["wake"].is_set():
+                deadline=min((r["refresh_at"] for r in current.values() if "refresh_at" in r),default=float("inf"))
+                while not state["wake"].is_set() and time.time()<deadline:
                     try:
-                        await asyncio.wait_for(state["wake"].wait(),15)
+                        await asyncio.wait_for(state["wake"].wait(),min(15,max(0,deadline-time.time())))
                     except TimeoutError:
                         await asyncio.wait_for(stream.write(b": alive\n\n"),10)
                         state["last"] = int(time.time())
@@ -154,10 +158,12 @@ class Action(HomeAssistantView):
         data=await body(request)
         entry=authorize(hass,bearer(request),request)
         key,action=data.get("key"),data.get("action")
-        if not isinstance(key,str) or action not in ("turn_on","turn_off"):
+        if not isinstance(key,str) or not isinstance(action,str):
             raise web.HTTPBadRequest()
         row=rows(hass,entry.options).get(key)
-        if not row or not row["controllable"] or not row["available"]:
+        toggle = row and row["controllable"] and row["domain"] in ("light","switch") and action in ("turn_on","turn_off")
+        approved = row and key.startswith("card:") and action in ("turn_on","start","pause","return_to_base") and row.get("operation")==action
+        if not row or not row["available"] or not (approved or toggle):
             raise web.HTTPForbidden()
         await hass.services.async_call(row["domain"],action,{"entity_id":row["eid"]},blocking=True)
         return web.json_response({"ok":True})
