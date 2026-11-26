@@ -55,8 +55,9 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install distlib==0.4.0
-      - shell: ${{ matrix.shell }}
-        run: .\bravia\windows\tests\hdmi.ps1
+      - shell: pwsh
+        run: |
+          & $env:BRAVIA_TEST_POWERSHELL -NoProfile -File .\bravia\windows\tests\hdmi.ps1
       - run: python bravia/integration/test_windows.py
   secrets:
     permissions:
