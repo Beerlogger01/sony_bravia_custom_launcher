@@ -10,6 +10,12 @@ public final class PanelDeviceTest extends InstrumentationTestCase {
         return new JSONObject().put("key",key).put("title",name).put("eid","sensor.fixture")
                 .put("domain","sensor").put("section","Датчики").put("unit","°C").put("value",value);
     }
+    public void testVacuumBatteryAndDoorWarning() throws Exception{
+        JSONObject vacuum=new JSONObject().put("domain","vacuum").put("value","docked").put("battery",83);
+        assertEquals("На базе · 83%",Feed.reading(vacuum));
+        JSONObject door=new JSONObject().put("domain","binary_sensor").put("dc","door").put("value","on");
+        assertTrue(Feed.problem(door));door.put("value","off");assertFalse(Feed.problem(door));
+    }
     public void testPinsOrderRenameRemovalAndStaleOnApi24() throws Throwable{
         assertEquals(24,android.os.Build.VERSION.SDK_INT);
         runTestOnUiThread(()->{

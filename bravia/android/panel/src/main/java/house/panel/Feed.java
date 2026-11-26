@@ -61,6 +61,7 @@ final class Feed {
         if (listeners.isEmpty()) return;
         String url = prefs.getString("bridge","");
         if (url.isEmpty()) { status="Настройте подключение"; notifyListeners(); return; }
+        status="Подключение…";notifyListeners();
         int id = generation;
         worker = new Thread(() -> stream(id,url),"bravia-state");
         worker.start();
@@ -73,6 +74,7 @@ final class Feed {
         int delay=1000;
         while (id==generation) {
             HttpsURLConnection c=null;
+            String failure="Нет связи";
             try {
                 c=(HttpsURLConnection)new URL(endpoint+"/v1/events").openConnection();
                 active=c;
@@ -93,9 +95,10 @@ final class Feed {
                         main.post(() -> accept(id,data));
                     }
                 }
-            } catch(Exception e) { /* Never log credentials or household states. */ }
+            } catch(javax.net.ssl.SSLHandshakeException e) { failure="Проверьте сертификат TLS"; }
+            catch(Exception e) { /* Never log credentials or household states. */ }
             finally { if(c!=null)c.disconnect(); if(active==c)active=null; }
-            status(id,"Нет связи");
+            status(id,failure);
             try { Thread.sleep(delay); } catch(InterruptedException e){ return; }
             delay=Math.min(60000,delay*2);
         }
@@ -157,7 +160,7 @@ final class Feed {
     }
     static boolean problem(JSONObject r) {
         return Arrays.asList("unavailable","unknown","error").contains(r.optString("value"))
-            || (Arrays.asList("problem","smoke","gas","safety","tamper","battery").contains(r.optString("dc")) && "on".equals(r.optString("value")))
+            || (Arrays.asList("problem","smoke","gas","safety","tamper","battery","door","window","opening","garage_door","moisture").contains(r.optString("dc")) && "on".equals(r.optString("value")))
             || ("connectivity".equals(r.optString("dc")) && "off".equals(r.optString("value")));
     }
     static String reading(JSONObject r) {
@@ -166,6 +169,7 @@ final class Feed {
             case "cleaning": val="Убирает"; break;
             case "returning": val="На базу"; break;
             case "docked": val="На базе"; break;
+            case "idle": val="Ожидание"; break;
             case "charging": val="Заряжается"; break;
             case "error": val="Ошибка"; break;
             case "unavailable": val="Недоступно"; break;
@@ -173,6 +177,9 @@ final class Feed {
             case "on": val="Вкл"; break;
             case "off": val="Выкл"; break;
         }
+        int battery=r.optInt("battery",-1);
+        if("vacuum".equals(r.optString("domain")) && battery>=0 && battery<=100)
+            return val+" · "+battery+"%";
         return val+" "+r.optString("unit");
     }
     String[] featured() {

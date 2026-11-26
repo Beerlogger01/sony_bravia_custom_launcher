@@ -10,7 +10,7 @@ $cert = '8c564f58900eb43a9e9a15b456381916a0e164226821c499b7f4b8944f25c82c'
 $map = Read-PortMap (Get-Content (Join-Path $dir 'inputs.txt'))
 $rc1 = @{home='2f7bae5681d82d8430c2e6504ef48243383e6718a4384bdeff69977417030a0a';panel='dc6fc7c396d99f5940cc0f839f5424d61539621d1f2b25885ec986e8e7427502'}
 # Approved byte-for-byte release pair. Its manifests and signer are checked at packaging time.
-$approved = @{home='71901882789e5cd5a870432a12f2b079384d5d94ffa9e927c17f301a7952ec42';panel='ddfe1893a3c102b8f38bc15c6ee18d85c7294e3d6ec6bec1b8e119f2341ee665'}
+$approved = @{home='71901882789e5cd5a870432a12f2b079384d5d94ffa9e927c17f301a7952ec42';panel='7f9b442c42b715f1abb265b959bbd3c2264b1f4df75e6beda5a90e77d8d5dab1'}
 $pending = @()
 foreach ($name in 'panel','home') {
     $pkg = "house.bravia.$name"
