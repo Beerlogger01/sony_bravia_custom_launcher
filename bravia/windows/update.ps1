@@ -3,8 +3,8 @@ param([string]$ApkDir = (Join-Path $PSScriptRoot '..\apk'), [string]$Apksigner)
 . (Join-Path $PSScriptRoot 'hdmi.ps1')
 Open-Tv
 $original = Get-Home
-if ($original -ne 'com.google.android.leanbacklauncher/.MainActivity') { throw "Unexpected current HOME: $original" }
-$dir = Save-State
+if ($original -ne $AliasHome -and $original -ne 'com.google.android.leanbacklauncher/.MainActivity') { throw "Unexpected current HOME: $original" }
+$dir = Save-State -Updating
 $previous = @{home='41079d682bd58ec973b5bd46021a1743119ad4fa02e8b7f2b8932651a863559e';panel='8e06170620521d08c8eada130817168fae067c91adc5b180d4444e41ba8757d6'}
 $cert = '8c564f58900eb43a9e9a15b456381916a0e164226821c499b7f4b8944f25c82c'
 $map = Read-PortMap (Get-Content (Join-Path $dir 'inputs.txt'))
@@ -46,7 +46,7 @@ foreach ($apk in $pending) {
     $done += $attempt
 }
 $attempt = 'HDMI and HOME checks'
-Send-PortMap $map
+if ($map.Count -gt 0) { Send-PortMap $map }
 if ((Get-Home) -ne $original) { throw "HOME differs from the baseline. Inspect $dir before continuing." }
 Show-Component $Preview
 Write-Host "Preview updated. HOME: $original. Backup: $dir"

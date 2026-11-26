@@ -60,7 +60,7 @@ class WindowsScripts(unittest.TestCase):
             s=json.loads(state.read_text());self.assertEqual(s["home"],stock);self.assertFalse(s["enrolled"])
             self.assertFalse(any("disable-user" in cmd for cmd in s["commands"]))
     def test_update_preserves_home_and_retries(self):
-        stock="com.google.android.leanbacklauncher/.MainActivity"
+        stock="house.bravia.home/com.gathin.tvhome.HomeChoice"
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); scripts=root/"windows"; shutil.copytree(HERE.parent/"windows",scripts)
             adb=fixture_adb(root)

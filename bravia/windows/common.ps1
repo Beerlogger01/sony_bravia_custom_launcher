@@ -39,9 +39,9 @@ function Get-Identity {
     if ($id -notmatch '^[a-fA-F0-9]{8,16}$') { throw 'Cannot identify this TV.' }
     $id
 }
-function Save-State {
+function Save-State([switch]$Updating) {
     $homeComponent = Get-Home
-    if ($homeComponent -match '^house\.bravia\.') { throw 'Expected original HOME. Keep the original backup.' }
+    if (!$Updating -and $homeComponent -match '^house\.bravia\.') { throw 'Expected original HOME. Keep the original backup.' }
     $dir = Join-Path $env:LOCALAPPDATA ('BraviaHome\'+(Get-Date -Format yyyyMMdd-HHmmss-fff))
     $null = New-Item -ItemType Directory -Path $dir
     Invoke-Tv shell getprop | Out-File "$dir\getprop.txt" -Encoding utf8
@@ -50,11 +50,18 @@ function Save-State {
     Invoke-Tv shell pm list packages -f | Out-File "$dir\packages.txt" -Encoding utf8
     Invoke-Tv shell dumpsys tv_input | Out-File "$dir\inputs.txt" -Encoding utf8
     Invoke-Tv shell dumpsys package preferred-activities | Out-File "$dir\preferred.txt" -Encoding utf8
-    [pscustomobject]@{ stock=$homeComponent; identity=(Get-Identity); firmware=((Invoke-Tv shell getprop ro.build.fingerprint) -join '') } |
+    $stock = $homeComponent
+    if ($homeComponent -eq $AliasHome) { $stock = 'com.google.android.leanbacklauncher/.MainActivity' }
+    if ($Updating) {
+        foreach ($pkg in 'com.google.android.leanbacklauncher','house.bravia.home','house.bravia.panel','com.sony.dtv.tvx','com.sony.dtv.webapi.core','com.android.systemui') {
+            Invoke-Tv shell dumpsys package $pkg | Out-File "$dir\$pkg.txt" -Encoding utf8
+        }
+    }
+    [pscustomobject]@{ stock=$stock; original=$homeComponent; identity=(Get-Identity); firmware=((Invoke-Tv shell getprop ro.build.fingerprint) -join '') } |
         ConvertTo-Json | Out-File "$dir\home.json" -Encoding utf8
     Write-Host "Backup: $dir"
     Write-Host "Restore: .\restore.ps1 -Backup '$dir'"
-    Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$homeComponent'"
+    Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$stock'"
     $dir
 }
 function Read-State([string]$dir) {
