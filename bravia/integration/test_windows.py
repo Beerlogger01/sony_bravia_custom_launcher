@@ -3,19 +3,39 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 
-@unittest.skipUnless(shutil.which("pwsh"),"PowerShell required")
+POWERSHELL = os.environ.get("BRAVIA_TEST_POWERSHELL", "pwsh")
+
+def fixture_adb(folder):
+    if os.name != "nt":
+        target = folder / "adb"
+        shutil.copy(HERE / "fake_adb.py", target)
+        target.chmod(0o700)
+        return target
+    # A native entry point is needed to exercise ProcessStartInfo and binary stdout on 5.1.
+    # The distlib console launcher passes argv to the embedded __main__ on Windows.
+    from distlib.scripts import ScriptMaker
+    dist = folder / "fixture"
+    dist.mkdir()
+    script = dist / "adb"
+    script.write_bytes(b"#!python\n" + (HERE / "fake_adb.py").read_bytes())
+    maker = ScriptMaker(str(dist), str(folder))
+    maker.executable = sys.executable
+    maker.make("adb")
+    return folder / "adb.exe"
+
+@unittest.skipUnless(shutil.which(POWERSHELL),"PowerShell required")
 class WindowsScripts(unittest.TestCase):
     def trial(self,refuse):
         stock="stock.fixture/.Home"
         with tempfile.TemporaryDirectory() as temp:
             d=Path(temp);scripts=d/"windows";shutil.copytree(HERE.parent/"windows",scripts)
-            fake=d/"adb";shutil.copy(HERE/"fake_adb.py",fake);fake.chmod(0o700)
-            common=scripts/"common.ps1"
+            fake=fixture_adb(d)
             apk=d/"apk";apk.mkdir()
             digest=hashlib.sha256(b"fixture").hexdigest()
             for n in ["home","panel"]:(apk/(n+".apk")).write_bytes(b"fixture")
@@ -23,7 +43,7 @@ class WindowsScripts(unittest.TestCase):
             state=d/"state"; state.write_text(json.dumps(dict(home=stock,enrolled=False,refuse=refuse,installed=[],commands=[])))
             env=dict(os.environ,BRAVIA_TV="192.0.2.40:5555",BRAVIA_ADB=str(fake),LOCALAPPDATA=str(d/"backups"),BRAVIA_FAKE_STATE=str(state))
             def run(code,ok=True):
-                proc=subprocess.run(["pwsh","-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'\n"+code],
+                proc=subprocess.run([POWERSHELL,"-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'\n"+code],
                                     cwd=scripts,env=env,capture_output=True,text=True)
                 self.assertEqual(proc.returncode==0,ok,proc.stdout+proc.stderr)
             run("./install.ps1")
@@ -43,7 +63,7 @@ class WindowsScripts(unittest.TestCase):
         stock="com.google.android.leanbacklauncher/.MainActivity"
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); scripts=root/"windows"; shutil.copytree(HERE.parent/"windows",scripts)
-            adb=root/"adb";shutil.copy(HERE/"fake_adb.py",adb);adb.chmod(0o700)
+            adb=fixture_adb(root)
             update=scripts/"update.ps1"
             old=hashlib.sha256(b"old").hexdigest()
             update.write_text(update.read_text().replace("41079d682bd58ec973b5bd46021a1743119ad4fa02e8b7f2b8932651a863559e",old)
@@ -57,7 +77,7 @@ class WindowsScripts(unittest.TestCase):
             state=root/"state";info=dict(home=stock,files={"home":b"foreign".hex(),"panel":b"old".hex()},commands=[])
             state.write_text(json.dumps(info))
             env=dict(os.environ,BRAVIA_TV="192.0.2.40:5555",BRAVIA_ADB=str(adb),LOCALAPPDATA=str(root/"backups"),BRAVIA_FAKE_STATE=str(state))
-            def run():return subprocess.run(["pwsh","-NoProfile","-NonInteractive","-File","update.ps1"],cwd=scripts,env=env,capture_output=True,text=True)
+            def run():return subprocess.run([POWERSHELL,"-NoProfile","-NonInteractive","-File","update.ps1"],cwd=scripts,env=env,capture_output=True,text=True)
             self.assertNotEqual(run().returncode,0)
             self.assertFalse(any(c.startswith("install") for c in json.loads(state.read_text())["commands"]))
             info["files"]["home"]=b"old".hex();state.write_text(json.dumps(info))

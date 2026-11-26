@@ -42,12 +42,22 @@ jobs:
       - uses: actions/checkout@v4
       - run: pwsh -File bravia/windows/tests/hdmi.ps1
       - run: python bravia/integration/test_windows.py
-  windows-parser:
+  windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [powershell, pwsh]
+    env:
+      BRAVIA_TEST_POWERSHELL: ${{ matrix.shell }}
     steps:
       - uses: actions/checkout@v4
-      - shell: powershell
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install distlib==0.4.0
+      - shell: ${{ matrix.shell }}
         run: .\bravia\windows\tests\hdmi.ps1
+      - run: python bravia/integration/test_windows.py
   secrets:
     permissions:
       contents: read
