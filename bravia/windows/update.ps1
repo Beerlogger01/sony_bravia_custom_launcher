@@ -31,9 +31,17 @@ foreach ($name in 'panel','home') {
     $installed = (Get-LocalApkDigest $old)
     if ($installed -eq $digest) { continue }
     if ($installed -ne $previous[$name] -and $installed -ne $rc1[$name] -and $installed -ne $prior12[$name] -and $installed -ne $rc2[$name]) {
+        if (!$Apksigner) {
+            $tool = Get-Command apksigner -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($tool) { $Apksigner = $tool.Source }
+        }
         if (!$Apksigner) {throw "Installed $pkg differs from the first distribution. Pass -Apksigner with the Android SDK apksigner.bat path to verify the installed signature."}
         $result = (& $Apksigner verify --min-sdk-version 24 --print-certs $old) -join "`n"
-        if ($LASTEXITCODE -ne 0 -or $result -notmatch "certificate SHA-256 digest: $cert") {throw "Different signer: $pkg"}
+        $verified = $LASTEXITCODE -eq 0
+        $signers = @($result -split "\r?\n" | Where-Object { $_ -match '^Signer #\d+ certificate SHA-256 digest:' })
+        if (!$verified -or $signers.Count -ne 1 -or $signers[0].Trim() -notmatch "^Signer #1 certificate SHA-256 digest: $cert$") {
+            throw "APK verification failed or different signer: $pkg"
+        }
     }
     $pending += $apk
 }
@@ -49,8 +57,12 @@ foreach ($apk in $pending) {
 $attempt = 'HDMI and HOME checks'
 if ($map.Count -gt 0) { Send-PortMap $map }
 if ((Get-Home) -ne $original) { throw "HOME differs from the baseline. Inspect $dir before continuing." }
+$attempt = 'foreground verification'
 Show-Component $Preview
 Write-Host "Preview updated. HOME: $original. Backup: $dir"
 } catch {
+    if ($attempt -eq 'foreground verification') {
+        throw "Both packages are up to date. Could not confirm the launcher preview. Backup: $dir. $($_.Exception.Message)"
+    }
     throw "Confirmed installations: [$($done -join ', ')]. Failed or unconfirmed: $attempt. Backup: $dir. Reconnect and rerun update.ps1. $($_.Exception.Message)"
 }

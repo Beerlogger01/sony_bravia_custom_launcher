@@ -77,20 +77,31 @@ class WindowsScripts(unittest.TestCase):
             state=root/"state";info=dict(home=stock,leanback_disabled=True,installed=["house.bravia.home","house.bravia.panel"],files={"home":b"foreign".hex(),"panel":b"old".hex()},commands=[])
             state.write_text(json.dumps(info))
             env=dict(os.environ,BRAVIA_TV="192.0.2.40:5555",BRAVIA_ADB=str(adb),LOCALAPPDATA=str(root/"backups"),BRAVIA_FAKE_STATE=str(state))
-            def run():return subprocess.run([POWERSHELL,"-NoProfile","-NonInteractive","-File","update.ps1"],cwd=scripts,env=env,capture_output=True,text=True)
+            def run(*args):return subprocess.run([POWERSHELL,"-NoProfile","-NonInteractive","-File","update.ps1",*args],cwd=scripts,env=env,capture_output=True,text=True)
             self.assertNotEqual(run().returncode,0)
             self.assertFalse(any(c.startswith("install") for c in json.loads(state.read_text())["commands"]))
-            info["files"]["home"]=b"old".hex();state.write_text(json.dumps(info))
+            # Model SDK apksigner output, including a valid digest in a rejected APK.
+            signer=root/"verify.ps1"
+            cert="8c564f58900eb43a9e9a15b456381916a0e164226821c499b7f4b8944f25c82c"
+            def signer_output(lines,exitcode):
+                signer.write_text("\n".join("Write-Output '"+line+"'" for line in lines)+f"\nexit {exitcode}\n")
+            line="Signer #1 certificate SHA-256 digest: "
+            for lines,exitcode in (([line+"f"*64],0),([line+cert],1),([line+cert,"Signer #2 certificate SHA-256 digest: "+"f"*64],0)):
+                signer_output(lines,exitcode)
+                rejected=run("-Apksigner",str(signer))
+                self.assertNotEqual(rejected.returncode,0)
+                self.assertFalse(any(c.startswith("install") for c in json.loads(state.read_text())["commands"]))
+            signer_output([line+cert],0)
             info["fail_install"]="home";state.write_text(json.dumps(info))
-            failed=run();self.assertNotEqual(failed.returncode,0)
+            failed=run("-Apksigner",str(signer));self.assertNotEqual(failed.returncode,0)
             partial=json.loads(state.read_text())
             self.assertEqual(partial["files"]["panel"],b"new".hex(),failed.stdout+failed.stderr)
-            self.assertEqual(partial["files"]["home"],b"old".hex())
+            self.assertEqual(partial["files"]["home"],b"foreign".hex())
             self.assertEqual(partial["temp"],{})
             self.assertIn("panel.apk",failed.stderr)
             del partial["fail_install"];state.write_text(json.dumps(partial))
             for _ in range(2):
-                p=run();self.assertEqual(p.returncode,0,p.stderr)
+                p=run("-Apksigner",str(signer));self.assertEqual(p.returncode,0,p.stderr)
             result=json.loads(state.read_text());self.assertEqual(result["home"],stock)
             self.assertEqual(sum(c.startswith("install -r") for c in result["commands"]),2)
             self.assertFalse(any("set-home-activity" in c or "disable-user" in c or "uninstall" in c for c in result["commands"]))
@@ -108,6 +119,37 @@ class WindowsScripts(unittest.TestCase):
             result=json.loads(state.read_text())
             self.assertFalse(result["leanback_disabled"])
             self.assertEqual(result["home"],"com.google.android.leanbacklauncher/.MainActivity")
+    def test_timeout_requires_exact_focused_user_zero_component(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            adb=fixture_adb(root)
+            db=root/"state"
+            env=dict(os.environ,BRAVIA_TV="192.0.2.40:5555",BRAVIA_ADB=str(adb),BRAVIA_FAKE_STATE=str(db))
+            name="sample/.Preview"
+            def record(component,user=0):
+                return f"mFocusedActivity: ActivityRecord{{abc u{user} {component} t42}}"
+            cases=[
+                ([record("sample/.Starting"),record("sample/sample.Preview")], True),
+                ([record(name,10)], False),
+                ([record("sample/.PreviewOther")+"\n  * Hist #0: ActivityRecord{abc u0 sample/.Preview t42}"],False),
+                ([record("other/.Preview")],False),
+                (["mFocusedActivity: null"],False),
+            ]
+            target="house.bravia.home/com.gathin.tvhome.BraviaHome"
+            cases=[(sequence,ok,name,None) for sequence,ok in cases]+[
+                ([record("house.bravia.home/com.gathin.tvhome.HomeChoice")],True,target,None),
+                (["mLastPausedActivity: ActivityRecord{abc u0 sample/.Preview t42}"],True,name,"mCurrentFocus=Window{123 u0 sample/sample.Preview}"),
+                ([record("sample/.Other")],False,name,"mCurrentFocus=Window{123 u0 sample/.Preview}"),
+            ]
+            for sequence,ok,component,window in cases:
+                with self.subTest(sequence=sequence):
+                    db.write_text(json.dumps(dict(commands=[],launch_status="timeout",focus_sequence=sequence,window_focus=window)))
+                    proc=subprocess.run([POWERSHELL,"-NoProfile","-NonInteractive","-Command",
+                        f". ./common.ps1; Show-Component '{component}'"],cwd=HERE.parent/"windows",env=env,capture_output=True,text=True)
+                    self.assertEqual(proc.returncode==0,ok,proc.stdout+proc.stderr)
+                    commands=json.loads(db.read_text())["commands"]
+                    self.assertEqual(commands.count("shell am start -W -n "+component),1)
+                    self.assertEqual(commands.count("shell dumpsys activity activities"),len(sequence) if ok else 5)
     def test_confirm_then_restore(self):self.trial(False)
     def test_refused_home_rolls_back(self):self.trial(True)
 
