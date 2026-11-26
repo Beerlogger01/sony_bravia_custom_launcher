@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+    useLibrary 'android.test.runner'
+    useLibrary 'android.test.base'
+    namespace 'house.panel'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'house.bravia.panel'
+        minSdk 24
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+        targetSdk 34
+        versionCode 3
+        versionName '1.2.0-rc1'
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            signingConfig signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+}
+
+// Optional local CA for the emulator integration harness. Release has no test resources.
+if (providers.gradleProperty('emulatorTestRes').isPresent()) {
+    android.sourceSets.debug.res.srcDir(providers.gradleProperty('emulatorTestRes').get())
+}
+apply from: rootProject.file('signing-check.gradle')

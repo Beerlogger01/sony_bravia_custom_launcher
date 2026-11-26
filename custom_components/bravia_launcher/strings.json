@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add television",
+        "data": {
+          "name": "Television name"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "cards": "Cards",
+          "pair": "Issue pairing code",
+          "revoke": "Revoke access",
+          "status": "Connection"
+        }
+      },
+      "cards": {
+        "title": "Cards",
+        "data": {
+          "areas": "Areas",
+          "entities": "Entities in order",
+          "favorites": "Favorites in order",
+          "hidden": "Hidden",
+          "control": "Allow control",
+          "dashboard": "Existing dashboard path",
+          "appearance": "Home screen theme"
+        }
+      },
+      "pair": {
+        "title": "Issue pairing code",
+        "description": "Enter on TV within three minutes — **{code}**"
+      },
+      "revoke": {
+        "title": "Revoke access",
+        "description": "Confirm revocation of this TV key."
+      },
+      "status": {
+        "title": "Connection",
+        "description": "Stream {live}. Last contact UTC {last}"
+      }
+    },
+    "abort": {
+      "done": "Done",
+      "revoked": "Access revoked"
+    },
+    "error": {
+      "invalid_path": "Enter a path starting with /"
+    }
+  }
+}

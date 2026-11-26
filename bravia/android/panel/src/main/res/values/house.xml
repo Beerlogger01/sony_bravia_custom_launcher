@@ -1,0 +1,4 @@
+<resources>
+    <string translatable="false" name="house_name">BRAVIA</string>
+    <string translatable="false" name="house_dashboard">Домашний дашборд</string>
+</resources>
