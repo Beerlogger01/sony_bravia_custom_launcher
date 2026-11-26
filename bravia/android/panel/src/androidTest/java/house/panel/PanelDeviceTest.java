@@ -6,6 +6,16 @@ import java.util.*;
 import org.json.*;
 
 public final class PanelDeviceTest extends InstrumentationTestCase {
+    public void testLanCleartextScope() throws Exception {
+        android.security.NetworkSecurityPolicy policy=android.security.NetworkSecurityPolicy.getInstance();
+        assertTrue(policy.isCleartextTrafficPermitted(BuildConfig.LAN_HOST));
+        assertFalse(policy.isCleartextTrafficPermitted("example.org"));
+        for(String url:new String[]{"http://example.org/v1/pair",TvApi.LAN+"0/api/bravia_launcher/v1/events",
+            "http://10.0.0.2:80/api/bravia_launcher/v1/pair",TvApi.LAN+"/other"}) {
+            try { TvApi.open(url);fail(url); } catch(java.io.IOException expected) { }
+        }
+        TvApi.open(TvApi.LAN+"/api/bravia_launcher/v1/events").disconnect();
+    }
     private JSONObject row(String key,String name,String value) throws Exception{
         return new JSONObject().put("key",key).put("title",name).put("eid","sensor.fixture")
                 .put("domain","sensor").put("section","Датчики").put("unit","°C").put("value",value);

@@ -1,16 +1,27 @@
 plugins { id 'com.android.application' }
+// A personal build can pin a single RFC1918 server using -PbraviaLanHost.
+def lanHost = providers.gradleProperty('braviaLanHost').getOrElse('10.0.0.2')
+def octets = lanHost.tokenize('.')
+if (!(lanHost ==~ /(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}/) ||
+        !octets.every { it.toInteger() < 256 } ||
+        !(octets[0] == '10' || (octets[0] == '172' && octets[1].toInteger() in 16..31) ||
+                (octets[0] == '192' && octets[1] == '168'))) {
+    throw new GradleException('braviaLanHost requires an RFC1918 IPv4 literal')
+}
 android {
+    buildFeatures { buildConfig true }
     useLibrary 'android.test.runner'
     useLibrary 'android.test.base'
     namespace 'house.panel'
     compileSdk 34
     defaultConfig {
         applicationId 'house.bravia.panel'
+        buildConfigField 'String', 'LAN_HOST', '"' + lanHost + '"'
         minSdk 24
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
         targetSdk 34
-        versionCode 3
-        versionName '1.2.0-rc1'
+        versionCode 4
+        versionName '1.2.0-rc2'
     }
     buildTypes {
         release {
@@ -21,6 +32,23 @@ android {
     }
 }
 
+if (lanHost != '10.0.0.2') {
+    def generated = layout.buildDirectory.dir('generated/lanResources')
+    def source = file('src/main/res/xml/network.xml')
+    def generate = tasks.register('generateLanPolicy') {
+        inputs.property('host',lanHost)
+        inputs.file(source)
+        outputs.dir(generated)
+        doLast {
+            def xml = generated.get().file('xml/network.xml').asFile
+            xml.parentFile.mkdirs()
+            xml.text = source.text.replace('10.0.0.2',lanHost)
+        }
+    }
+    android.sourceSets.release.res.srcDir(generated)
+    android.sourceSets.debug.res.srcDir(generated)
+    tasks.named('preBuild').configure { dependsOn generate }
+}
 // Optional local CA for the emulator integration harness. Release has no test resources.
 if (providers.gradleProperty('emulatorTestRes').isPresent()) {
     android.sourceSets.debug.res.srcDir(providers.gradleProperty('emulatorTestRes').get())

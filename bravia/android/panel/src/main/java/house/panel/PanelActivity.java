@@ -203,11 +203,17 @@ public final class PanelActivity extends Activity implements Feed.Listener {
             || !Arrays.asList("","/").contains(u.getPath()) || !("https".equals(u.getScheme())||(!httpsOnly && "http".equals(u.getScheme()))))throw new IllegalArgumentException();
         return u.getScheme()+"://"+u.getEncodedAuthority();
     }
+    private static String connectionOrigin(String text, boolean lan){
+        if(lan && !TvApi.LAN.equals(expectedOrigin(text)))throw new IllegalArgumentException();
+        return lan?TvApi.LAN:origin(text,true);
+    }
+    private static String expectedOrigin(String text){return text.trim().replaceFirst("/$","");}
     private void settings(){
         LinearLayout fields=new LinearLayout(this);fields.setPadding(dp(20),0,dp(20),0);fields.setOrientation(LinearLayout.VERTICAL);
         String current=feed.prefs.getString("bridge","");
         boolean integrated=current.endsWith("/api/bravia_launcher");
-        EditText bridge=field(fields,"HTTPS-адрес HA или прежнего bridge",integrated?current.substring(0,current.length()-"/api/bravia_launcher".length()):current,false);
+        EditText bridge=field(fields,"Адрес HA или HTTPS bridge",integrated?current.substring(0,current.length()-"/api/bravia_launcher".length()):current,false);
+        android.widget.CheckBox lan=new android.widget.CheckBox(this);lan.setText("Локальная сеть (HTTP) · код, ключ и данные без шифрования");lan.setChecked(current.startsWith(TvApi.LAN+"/"));fields.addView(lan);
         EditText code=field(fields,"Одноразовый код из Bravia Launcher в HA","",true);
         Button pair=new Button(this);pair.setText("Привязать телевизор");fields.addView(pair);
         EditText key=field(fields,"Ключ телевизора · для нового адреса введите заново","",true);
@@ -222,8 +228,8 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         dialog.show();
         pair.setOnClickListener(v->{
             final String url, digits=code.getText().toString().trim();
-            try {url=origin(bridge.getText().toString(),true);}
-            catch(Exception ex){toast("Введите HTTPS-адрес HA без пути");return;}
+            try {url=connectionOrigin(bridge.getText().toString(),lan.isChecked());}
+            catch(Exception ex){toast("Проверьте режим, адрес и порт HA");return;}
             if(!digits.matches("[0-9]{8}")){toast("Нужны восемь цифр");return;}
             pair.setEnabled(false);dialog.setCancelable(false);
             for(int button:new int[]{-1,-2,-3})dialog.getButton(button).setEnabled(false);
@@ -251,7 +257,8 @@ public final class PanelActivity extends Activity implements Feed.Listener {
             },"bravia-pair").start();
         });
         dialog.getButton(-1).setOnClickListener(v->{try{
-            String url=origin(bridge.getText().toString(),true), rawKey=key.getText().toString();
+            String url=connectionOrigin(bridge.getText().toString(),lan.isChecked()), rawKey=key.getText().toString();
+            if(lan.isChecked() && (!rawKey.isEmpty() || !current.equals(url+"/api/bravia_launcher")))throw new IllegalArgumentException();
             if(integrated && current.equals(url+"/api/bravia_launcher") && rawKey.isEmpty())url=current;
             if(rawKey.isEmpty() && !url.equals(feed.prefs.getString("bridge","")))throw new IllegalArgumentException();
             String browser=ha.getText().toString().trim(), manual=path.getText().toString().trim();

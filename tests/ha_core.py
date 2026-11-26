@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -13,7 +14,7 @@ from homeassistant import bootstrap, loader
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar, entity_registry as er
 
-async def test(config):
+async def test(config,lan=False):
     root=Path(__file__).resolve().parents[1]
     shutil.copytree(root/"custom_components",config/"custom_components",dirs_exist_ok=True)
     cert,key=config/"fixture.pem",config/"fixture.key"
@@ -24,6 +25,11 @@ async def test(config):
     hass.config.skip_pip=True
     settings={"homeassistant":{"latitude":0,"longitude":0,"elevation":0,"unit_system":"metric","time_zone":"UTC","country":"US"},
               "http":{"server_host":"127.0.0.1","server_port":18448,"ssl_certificate":str(cert),"ssl_key":str(key)}}
+    if lan:
+        with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as route:
+            route.connect(("192.0.2.1",9))  # Determine local interface without sending data.
+            host=route.getsockname()[0]
+        settings["http"]={"server_host":host,"server_port":18448}
     await bootstrap.async_from_config_dict(settings,hass)
     await hass.async_start()
     try:
@@ -54,6 +60,12 @@ async def test(config):
         assert second.entry_id!=entry.entry_id and "digest" not in second.data
         ctx=ssl.create_default_context(cafile=str(cert))
         prefix="https://127.0.0.1:18448/api/bravia_launcher/v1"
+        if lan:
+            prefix=f"http://{host}:18448/api/bravia_launcher/v1"
+            async with ClientSession() as probe:
+                async with probe.get(prefix+"/events") as res:assert res.status==403
+            await option("transport",{"lan_http":True,"tv_ip":host})
+            assert entry.options["areas"]==[room.id]
         async with ClientSession() as client:
             form=await option("pair")
             code=form["description_placeholders"]["code"]
@@ -153,4 +165,5 @@ async def test(config):
         await restarted.async_stop()
 
 if __name__=="__main__":
-    with tempfile.TemporaryDirectory() as temp:asyncio.run(test(Path(temp)))
+    for lan in (False,True):
+        with tempfile.TemporaryDirectory() as temp:asyncio.run(test(Path(temp),lan))

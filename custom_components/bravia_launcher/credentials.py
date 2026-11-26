@@ -19,7 +19,7 @@ class Pairing:
         self.codes[entry_id] = (digest(code), self.clock() + 180)
         return code
 
-    def redeem(self, code):
+    def redeem(self, code, eligible=lambda key: True):
         now = self.clock()
         while self.attempts and self.attempts[0] <= now - 180:
             self.attempts.popleft()
@@ -28,7 +28,7 @@ class Pairing:
         self.attempts.append(now)
         matches = [key for key, (expected, expiry) in self.codes.items()
                    if expiry > now and hmac.compare_digest(expected, digest(code))]
-        if len(matches) != 1:
+        if len(matches) != 1 or not eligible(matches[0]):
             return None
         del self.codes[matches[0]]
         return matches[0]

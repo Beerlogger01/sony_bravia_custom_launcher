@@ -6,7 +6,7 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import javax.net.ssl.HttpsURLConnection;
+import java.net.HttpURLConnection;
 
 /** All model/listener changes run on the main looper. One interruptible stream per foreground session. */
 final class Feed {
@@ -23,7 +23,7 @@ final class Feed {
     final Set<Listener> listeners = new HashSet<>();
     private final Handler main = new Handler(Looper.getMainLooper());
     private Thread worker;
-    private volatile HttpsURLConnection active;
+    private volatile HttpURLConnection active;
     private boolean cachePending;
     private final Runnable persist = () -> saveSnapshot();
     private void saveSnapshot(){
@@ -50,7 +50,7 @@ final class Feed {
         generation++;
         main.removeCallbacks(persist);
         saveSnapshot();
-        HttpsURLConnection old=active;
+        HttpURLConnection old=active;
         if(old!=null)new Thread(old::disconnect,"bravia-close").start();
         if (worker != null) worker.interrupt();
         worker = null;
@@ -63,26 +63,27 @@ final class Feed {
         if (url.isEmpty()) { status="Настройте подключение"; notifyListeners(); return; }
         status="Подключение…";notifyListeners();
         int id = generation;
-        worker = new Thread(() -> stream(id,url),"bravia-state");
+        String sealed=prefs.getString("secret","");
+        worker = new Thread(() -> stream(id,url,sealed),"bravia-state");
         worker.start();
     }
     void notifyListeners() { for (Listener l:new ArrayList<>(listeners)) l.changed(); }
     private void status(int id,String message) {
         main.post(() -> { if(id==generation && !status.equals(message)){ status=message; notifyListeners(); } });
     }
-    private void stream(int id,String endpoint) {
+    private void stream(int id,String endpoint,String sealed) {
         int delay=1000;
         while (id==generation) {
-            HttpsURLConnection c=null;
+            HttpURLConnection c=null;
             String failure="Нет связи";
             try {
-                c=(HttpsURLConnection)new URL(endpoint+"/v1/events").openConnection();
+                c=TvApi.open(endpoint+"/v1/events");
                 active=c;
                 if(id!=generation)return;
                 c.setInstanceFollowRedirects(false);
                 c.setConnectTimeout(8000);
                 c.setReadTimeout(35000);
-                c.setRequestProperty("Authorization","Bearer "+Vault.open(prefs.getString("secret","")));
+                c.setRequestProperty("Authorization","Bearer "+Vault.open(sealed));
                 int code=c.getResponseCode();
                 if(code==401 || code==403) { status(id,"Ключ отклонён"); return; }
                 if(code!=200) throw new IOException();
