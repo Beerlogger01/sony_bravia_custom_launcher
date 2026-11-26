@@ -211,13 +211,18 @@ final class Feed {
             JSONObject row=rows.optJSONObject(i);
             if(row.optBoolean("event") && (best==null || row.optInt("order")<best.optInt("order")))best=row;
         }
-        return best==null?"":best.optString("title")+"  ·  "+reading(best).trim();
+        return best==null?"":best.optString("title")+"  ·  "+reading(best).trim()+(best.optString("eta").isEmpty()?"":" · "+best.optString("eta"));
     }
     String[] summary() {
         Set<String> lit=new HashSet<>(),problems=new HashSet<>(); String robot="—"; ArrayList<String> active=new ArrayList<>();
         Map<String,JSONObject> byKey=new HashMap<>();
-        for(int i=0;i<rows.length();i++) {
-            JSONObject r=rows.optJSONObject(i);
+        Map<String,JSONObject> devices=new LinkedHashMap<>();
+        for(int i=0;i<rows.length();i++){
+            JSONObject row=rows.optJSONObject(i);byKey.put(row.optString("key"),row);
+            String eid=row.optString("eid",row.optString("key"));
+            if(!devices.containsKey(eid) || row.has("template") && !devices.get(eid).has("template"))devices.put(eid,row);
+        }
+        for(JSONObject r:devices.values()) {
             byKey.put(r.optString("key"),r);
             if(problem(r) && (!"safety".equals(r.optString("health")) || layout.optBoolean("safety",true))) problems.add(r.optString("eid"));
             if("light".equals(r.optString("domain")) && "on".equals(r.optString("value"))) lit.add(r.optString("eid"));

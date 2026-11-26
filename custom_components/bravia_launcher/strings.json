@@ -91,7 +91,9 @@
           "confirm": "Confirm operation",
           "event": "Live event source",
           "warn": "Warn if unavailable",
-          "delete": "Delete card"
+          "delete": "Delete card",
+          "eta": "Finish time / remaining duration",
+          "event_states": "Live event states, comma-separated"
         }
       }
     },

@@ -25,6 +25,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     private final ArrayList<String> labels=new ArrayList<>();
     private final HashMap<String,JSONObject> catalog=new HashMap<>();
     private String section="";
+    private String remoteAction;
     private final ArrayDeque<String> history=new ArrayDeque<>();
     private final Set<String> pending=new HashSet<>();
     private static final String[] MENU={"Избранное","Климат","Техника","Система","Свет","Датчики","Проблемы",
@@ -65,6 +66,9 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         navigation.setSelection(Math.max(0,Arrays.asList(MENU).indexOf(section)));
         if(requested!=null && !requested.isEmpty())list.requestFocus();else navigation.requestFocus();
         if("retry".equals(requested))feed.restart();
+        if(state==null && requested!=null && requested.startsWith("card:") && "house.bravia.home".equals(getCallingPackage())
+                && getPackageManager().checkSignatures(getPackageName(),getCallingPackage())==android.content.pm.PackageManager.SIGNATURE_MATCH)
+            remoteAction=requested;
         pendingDashboard=state==null && "dashboard".equals(requested);
     }
     private int px(float n){return Math.round(n*scale);}
@@ -104,8 +108,8 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     }
     public void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);b.putString("section",section);}
     private int dp(int v){return Math.round(getResources().getDisplayMetrics().density*v);}
-    public void onStart(){super.onStart();feed.add(this);if(pendingDashboard){pendingDashboard=false;list.post(()->dashboard(false));}}
-    public void onStop(){feed.remove(this);super.onStop();}
+    public void onStart(){super.onStart();if(!"В сети".equals(feed.status))remoteAction=null;feed.add(this);if(pendingDashboard){pendingDashboard=false;list.post(()->dashboard(false));}}
+    public void onStop(){remoteAction=null;feed.remove(this);super.onStop();}
     public void changed(){
         status.setText("HOME ASSISTANT    /    "+feed.ageLabel());
         heading.setText(section.startsWith("card:")?"Карточка":section.equals(MENU[7])?"Каталог сущностей":section);
@@ -120,6 +124,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         ArrayList<String> next=new ArrayList<>(), ids=new ArrayList<>();
         {
             List<String> pins=feed.pins();
+            for(String id:orderedKeys())if(id.startsWith("card:") && MENU[0].equals(catalog.get(id).optString("section"))&&!pins.contains(id))pins.add(id);
             Iterable<String> source=section.equals(MENU[0])?pins:orderedKeys();
             for(String key:source){
                 JSONObject r=catalog.get(key);
@@ -136,6 +141,10 @@ public final class PanelActivity extends Activity implements Feed.Listener {
                 ids.add(key);next.add((feed.prefs.getStringSet("new",Collections.emptySet()).contains(key)?"Новое   ":"")+(pins.contains(key)?"★   ":"")+r.optString("title")+"     "+Feed.reading(r)
                     +"     "+r.optString("area")+(section.equals(MENU[7])?"   ·   "+r.optString("device"):""));
             }
+        }
+        if(remoteAction!=null && "В сети".equals(feed.status)){
+            String action=remoteAction;remoteAction=null;
+            list.post(()->{int i=keys.indexOf(action);if(i>=0 && !isFinishing() && !isDestroyed())select(i);});
         }
         int fresh=feed.prefs.getStringSet("new",Collections.emptySet()).size();
         count.setText("Карточек  ·  "+next.size()+(section.equals(MENU[7])?"     Новых  ·  "+fresh:""));
@@ -241,7 +250,7 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         int i=e.getKeyCode()-KeyEvent.KEYCODE_PROG_RED;
         if(i>=0 && i<4){
             String dest=feed.layout.optString(new String[]{"red","green","yellow","blue"}[i],"—");
-            if(!dest.equals("—")){if(e.getAction()==KeyEvent.ACTION_DOWN && e.getRepeatCount()==0)navigate(dest);return true;}
+            if(!dest.equals("—")){if(e.getAction()==KeyEvent.ACTION_DOWN && e.getRepeatCount()==0){if(dest.startsWith("card:") && "В сети".equals(feed.status))remoteAction=dest;navigate(dest);}return true;}
         }
         return super.dispatchKeyEvent(e);
     }

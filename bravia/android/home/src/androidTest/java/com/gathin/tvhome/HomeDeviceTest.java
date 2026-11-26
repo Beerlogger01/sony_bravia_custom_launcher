@@ -30,7 +30,13 @@ public final class HomeDeviceTest extends InstrumentationTestCase {
                     }
                 }
                 for(View v:controls)if(v.isClickable())assertTrue("Unreachable "+v.getContentDescription(),reached.contains(v));
-                assertTrue("Expected HOME controls",reached.size()>=19);
+                assertTrue("Expected HOME controls after removing duplicate catalog shortcuts",reached.size()>=18);
+                for(int i=1;i<=4;i++){
+                    ArrayList<View> labels=new ArrayList<>();
+                    root.findViewsWithText(labels,"HDMI "+i,View.FIND_VIEWS_WITH_TEXT);
+                    assertFalse("Missing HDMI "+i,labels.isEmpty());
+                    assertTrue(reached.contains(labels.get(0).getParent()));
+                }
                 first.requestFocus();
             });
             for(int key:new int[]{KeyEvent.KEYCODE_DPAD_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_UP}){

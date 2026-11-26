@@ -144,7 +144,7 @@ public final class BraviaHome extends Activity {
         String address=link==null?"—":link.getLinkAddresses().toString();
         String detail=network.getText()+" · "+address;
         if(network.getText().toString().contains("Wi-Fi") && rssi()>-127)detail+=" · "+rssi()+" dBm";
-        detail+="\nHA: "+endpoint+"\nSSE: "+status.getText()+"\nПоследние данные: "+(lastData>0?new java.util.Date(lastData*1000):"—");
+        detail+="\nЛокальный интерфейс: "+(link!=null?"подключён":"нет маршрута")+"\nАвторизация: "+(status.getText().toString().contains("HA в сети")?"подтверждена":status.getText().toString().contains("отклонён")?"доступ отклонён":"не подтверждена")+"\nHA: "+endpoint+"\nSSE: "+status.getText()+"\nПоследние данные: "+(lastData>0?new java.util.Date(lastData*1000):"—");
         new AlertDialog.Builder(this).setTitle("Диагностика сети").setMessage(detail).setNegativeButton("Назад",null)
             .setPositiveButton("Повторить соединение",(d,n)->panel("retry")).setNeutralButton("Пульт",(d,n)->keyMonitor()).show();
     }
@@ -305,7 +305,7 @@ public final class BraviaHome extends Activity {
         LinearLayout controls=line();page.addView(controls,-1,u(48));
         control(controls,getString(R.string.house_dashboard),R.drawable.lh_panels_top_left,()->panel("dashboard"));
         event=text("",17,accent,true);grow(controls,event,1);event.setVisibility(View.GONE);
-        
+
         control(controls,"Вид экрана",R.drawable.lh_settings,this::appearance);
         offline();network();
     }

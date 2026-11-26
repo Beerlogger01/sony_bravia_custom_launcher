@@ -48,6 +48,10 @@ elif cmd=="shell getprop ro.product.manufacturer":print("Sony")
 elif cmd=="shell am get-current-user":print(0)
 elif cmd.startswith("shell cmd package resolve-activity"):print(state["home"])
 elif cmd=="shell settings get secure android_id":print("0000000000000001")
+elif cmd.startswith("shell pm list packages -d"):
+    if state.get("leanback_disabled"): print("package:com.google.android.leanbacklauncher")
+elif cmd=="shell pm enable --user 0 com.google.android.leanbacklauncher":
+    state["leanback_disabled"]=False
 elif cmd.startswith("shell pm list packages house."):
     if args[-1] in state["installed"]: print("package:"+args[-1])
 elif cmd.startswith("shell am start -W -n "):print("Status: ok")
@@ -56,7 +60,7 @@ elif cmd.startswith("shell am broadcast "):
     state["enrolled"]=args[-1]=="house.bravia.ENROLL"
     print("Broadcast completed: result=-1")
 elif cmd.startswith("shell cmd package set-home-activity "):
-    if not state["refuse"] or "house." not in args[-1]:state["home"]=args[-1]
+    if not state.get("refuse") or "house." not in args[-1]:state["home"]=args[-1]
 elif cmd=="shell dumpsys activity activities":print("mFocusedActivity "+state["home"])
 elif cmd=="shell input keyevent 3":pass
 elif cmd.startswith(("shell settings list ","shell dumpsys ","shell pm list packages","shell getprop")):print("fixture")

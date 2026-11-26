@@ -63,7 +63,20 @@ def rows(hass, options):
             row["active"]=active(state,card.get("active_states"))
             if row["health"]=="unavailable" and card.get("warn") and elapsed>=card.get("delay",0):
                 row["health"]="warning"
-            row["event"]=bool(options.get("layout",{}).get("live") and card.get("event") and row["active"] and elapsed<card.get("duration",300))
+            markers=[v.strip() for v in card.get("event_states","").split(",") if v.strip()]
+            trigger=state.state in markers if markers else row["active"]
+            row["event"]=bool(options.get("layout",{}).get("live") and card.get("event") and row["available"] and trigger and elapsed<card.get("duration",300))
+            deadline=None
+            if row["event"]:
+                eta_eid=resolve(hass,card["eta_key"]) if card.get("eta_key") else None
+                eta=hass.states.get(eta_eid) if eta_eid else None
+                if eta and eta.state not in ("unknown","unavailable") and eta.attributes.get("device_class") in ("duration","timestamp"):
+                    row["eta"]=f"{eta.state} {eta.attributes.get('unit_of_measurement','')}".strip()
+                deadline=state.last_changed.timestamp()+card.get("duration",300)
+            if row["health"]=="unavailable" and card.get("warn") and elapsed<card.get("delay",0):
+                deadline=state.last_changed.timestamp()+card["delay"]
+            if deadline:
+                row["refresh_at"]=deadline
             op=card.get("operation")
             dom=row["domain"]
             if op=="toggle" and dom=="light" and row["available"]:

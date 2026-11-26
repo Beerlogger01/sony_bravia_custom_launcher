@@ -11,11 +11,12 @@ $map = Read-PortMap (Get-Content (Join-Path $dir 'inputs.txt'))
 $rc1 = @{home='2f7bae5681d82d8430c2e6504ef48243383e6718a4384bdeff69977417030a0a';panel='dc6fc7c396d99f5940cc0f839f5424d61539621d1f2b25885ec986e8e7427502'}
 # Approved byte-for-byte release pair. Its manifests and signer are checked at packaging time.
 $prior12 = @{home='71901882789e5cd5a870432a12f2b079384d5d94ffa9e927c17f301a7952ec42';panel='7f9b442c42b715f1abb265b959bbd3c2264b1f4df75e6beda5a90e77d8d5dab1'}
-$approved = @{home='aa9ca0308a89495881c6558aea46957fa08d6e775447a7a2810d012011533257';panel='08effe39b6c25c90ae2cb2ccdf3003828c83e4f8a3e1eff34ade0b3247587198'}
+$rc2 = @{home='aa9ca0308a89495881c6558aea46957fa08d6e775447a7a2810d012011533257';panel='08effe39b6c25c90ae2cb2ccdf3003828c83e4f8a3e1eff34ade0b3247587198'}
+$approved = @{home='55088512445dfc6c5d0d887972761a6d283ea13438bc896f6b5eaf90ddfc04d9';panel='aa8f4c147484fc5a94695ff0456e72ce5fbc0dbf1cce66f3eb311460573b1542'}
 $pending = @()
 foreach ($name in 'panel','home') {
     $pkg = "house.bravia.$name"
-    $limit = if ($name -eq 'home') { 16 } else { 4 }
+    $limit = if ($name -eq 'home') { 17 } else { 5 }
     $versions = @((Invoke-Tv shell dumpsys package $pkg) | Select-String 'versionCode=(\d+)')
     if ($versions.Count -ne 1 -or [long]$versions[0].Matches[0].Groups[1].Value -gt $limit) { throw "Unknown or newer installed version: $pkg" }
     $remote = ((Invoke-Tv shell pm path $pkg) -join '').Trim()
@@ -29,7 +30,7 @@ foreach ($name in 'panel','home') {
     if ($sum.Count -ne 1 -or $sum[0].Substring(0,64) -ne $digest) {throw "Unexpected new APK: $name"}
     $installed = (Get-LocalApkDigest $old)
     if ($installed -eq $digest) { continue }
-    if ($installed -ne $previous[$name] -and $installed -ne $rc1[$name] -and $installed -ne $prior12[$name]) {
+    if ($installed -ne $previous[$name] -and $installed -ne $rc1[$name] -and $installed -ne $prior12[$name] -and $installed -ne $rc2[$name]) {
         if (!$Apksigner) {throw "Installed $pkg differs from the first distribution. Pass -Apksigner with the Android SDK apksigner.bat path to verify the installed signature."}
         $result = (& $Apksigner verify --min-sdk-version 24 --print-certs $old) -join "`n"
         if ($LASTEXITCODE -ne 0 -or $result -notmatch "certificate SHA-256 digest: $cert") {throw "Different signer: $pkg"}

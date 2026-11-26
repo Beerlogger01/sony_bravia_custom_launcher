@@ -11,7 +11,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView, KEY_HASS
 from .const import DOMAIN, PREFIX
 from .credentials import digest
-from .projection import rows
+from .projection import resolve, rows
 
 from .transport import allowed
 
@@ -92,6 +92,9 @@ class Events(HomeAssistantView):
                 current = rows(hass, entry.options)
                 state["last"] = now
                 state["watch"] = {row["eid"] for row in current.values()}
+                if entry.options.get("layout",{}).get("live"):
+                    state["watch"].update(resolve(hass,c["eta_key"]) for c in entry.options.get("designer",{}).values()
+                                          if c.get("eta_key") and c.get("event") and c.get("visible"))
                 points = state.setdefault("history",{})
                 for key in list(points):
                     if key not in current:
@@ -121,14 +124,13 @@ class Events(HomeAssistantView):
                 payload = "data: "+json.dumps(data,ensure_ascii=False,separators=(",",":"))+"\n\n" if changed else ": alive\n\n"
                 await asyncio.wait_for(stream.write(payload.encode()),10)
                 before, previous_settings = current, settings
-                while not state["wake"].is_set():
+                deadline=min((r["refresh_at"] for r in current.values() if "refresh_at" in r),default=float("inf"))
+                while not state["wake"].is_set() and time.time()<deadline:
                     try:
-                        await asyncio.wait_for(state["wake"].wait(),15)
+                        await asyncio.wait_for(state["wake"].wait(),min(15,max(0,deadline-time.time())))
                     except TimeoutError:
                         await asyncio.wait_for(stream.write(b": alive\n\n"),10)
                         state["last"] = int(time.time())
-                        if any(c.get("event") or c.get("warn") for c in entry.options.get("designer",{}).values()):
-                            break
                 await asyncio.sleep(0.35)
         except (ConnectionError,TimeoutError):
             pass

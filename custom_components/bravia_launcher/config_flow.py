@@ -64,6 +64,8 @@ class Options(config_entries.OptionsFlow):
         if user_input is not None:
             data=dict(user_input)
             eid=data.pop("entity",None)
+            eta=data.pop("eta",None)
+            data["eta_key"]=identity(self.hass,eta) if eta else ""
             template=data["template"]
             domain=eid.split(".",1)[0] if eid else ""
             operation=data["operation"]
@@ -91,6 +93,10 @@ class Options(config_entries.OptionsFlow):
         fields[vol.Required("title",default=old.get("title",""))]=vol.All(str,vol.Length(min=1,max=80))
         value=resolve(self.hass,old["target"]) if old.get("target") else None
         fields[vol.Optional("entity",description={"suggested_value":value} if value else {})]=selector.EntitySelector()
+        eta=resolve(self.hass,old["eta_key"]) if old.get("eta_key") else None
+        fields[vol.Optional("eta",description={"suggested_value":eta} if eta else {})]=selector.EntitySelector(
+            selector.EntitySelectorConfig(filter={"domain":"sensor","device_class":["timestamp","duration"]}))
+        fields[vol.Optional("event_states",description={"suggested_value":old.get("event_states","")})]=str
         fields[vol.Optional("icon",description={"suggested_value":old.get("icon","")})]=str
         fields[vol.Optional("active_states",description={"suggested_value":old.get("active_states","")})]=str
         for k,default in (("order",50),("delay",0),("duration",300)):

@@ -61,6 +61,7 @@ function Save-State([switch]$Updating) {
         ConvertTo-Json | Out-File "$dir\home.json" -Encoding utf8
     Write-Host "Backup: $dir"
     Write-Host "Restore: .\restore.ps1 -Backup '$dir'"
+    if ($homeComponent -eq $AliasHome) { Write-Host 'If stock Leanback is disabled, restore.ps1 will ask before enabling it.' }
     Write-Host "Emergency stock screen: & '$Adb' -s '$Tv' shell am start -n '$stock'"
     $dir
 }
