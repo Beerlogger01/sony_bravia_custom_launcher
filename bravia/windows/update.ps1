@@ -12,7 +12,7 @@ $rc1 = @{home='2f7bae5681d82d8430c2e6504ef48243383e6718a4384bdeff69977417030a0a'
 # Approved byte-for-byte release pair. Its manifests and signer are checked at packaging time.
 $prior12 = @{home='71901882789e5cd5a870432a12f2b079384d5d94ffa9e927c17f301a7952ec42';panel='7f9b442c42b715f1abb265b959bbd3c2264b1f4df75e6beda5a90e77d8d5dab1'}
 $rc2 = @{home='aa9ca0308a89495881c6558aea46957fa08d6e775447a7a2810d012011533257';panel='08effe39b6c25c90ae2cb2ccdf3003828c83e4f8a3e1eff34ade0b3247587198'}
-$approved = @{home='55088512445dfc6c5d0d887972761a6d283ea13438bc896f6b5eaf90ddfc04d9';panel='aa8f4c147484fc5a94695ff0456e72ce5fbc0dbf1cce66f3eb311460573b1542'}
+$approved = @{home='55088512445dfc6c5d0d887972761a6d283ea13438bc896f6b5eaf90ddfc04d9';panel='2398cc01ad33892b86372eb218e1c60c8ce5f71d717aab9ccd88d72fae19ae2b'}
 $pending = @()
 foreach ($name in 'panel','home') {
     $pkg = "house.bravia.$name"

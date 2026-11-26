@@ -31,6 +31,10 @@ public final class PanelActivity extends Activity implements Feed.Listener {
     private static final String[] MENU={"Избранное","Климат","Техника","Система","Свет","Датчики","Проблемы",
         "Каталог · добавить на главную","Открыть Home Assistant","Kiosk · эксперимент","Подключение","Сейчас активно","Сценарии","Недоступные"};
     public void onCreate(Bundle state) {
+        String requested=getIntent().getStringExtra("screen");
+        boolean compact=requested!=null && (requested.startsWith("card:") ||
+            Arrays.asList("Свет","Сейчас активно","Сценарии","Датчики","Техника").contains(requested));
+        if(compact)setTheme(android.R.style.Theme_Material_Dialog_NoActionBar);
         super.onCreate(state);
         feed=Feed.get(this);
         scale=Math.min(getResources().getDisplayMetrics().widthPixels/1200f,getResources().getDisplayMetrics().heightPixels/675f);
@@ -60,7 +64,13 @@ public final class PanelActivity extends Activity implements Feed.Listener {
         list=new ListView(this);configureList(list);list.setDivider(new android.graphics.drawable.ColorDrawable(0xff12161d));list.setDividerHeight(px(7));
         list.setAdapter(adapter);LinearLayout.LayoutParams dataSize=new LinearLayout.LayoutParams(-1,0,1);dataSize.topMargin=px(18);main.addView(list,dataSize);
         list.setOnItemClickListener((p0,v,i,id)->select(i));
-        String requested=getIntent().getStringExtra("screen");
+        if(compact){
+            side.setVisibility(View.GONE);
+            android.util.DisplayMetrics dm=getResources().getDisplayMetrics();
+            getWindow().setLayout(Math.round(dm.widthPixels*.55f),Math.round(dm.heightPixels*.72f));
+            getWindow().setGravity(Gravity.CENTER);
+            WindowManager.LayoutParams lp=getWindow().getAttributes();lp.dimAmount=.45f;getWindow().setAttributes(lp);
+        }
         section=state!=null?state.getString("section",MENU[0]):requested;
         if(section==null || (!section.startsWith("card:")&&!Arrays.asList(MENU).contains(section)))section=MENU[0];
         navigation.setSelection(Math.max(0,Arrays.asList(MENU).indexOf(section)));
